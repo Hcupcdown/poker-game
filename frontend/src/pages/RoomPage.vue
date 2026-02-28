@@ -150,13 +150,29 @@ onMounted(() => {
   // 连接并触发认证（connectSocket 内部会 emit player:auth）
   const socket = connectSocket(store.player)
 
-  // 始终等 auth:ok 之后再加入房间，确保 socketToPlayer 映射已建立
-  socket.once('player:auth:ok', () => {
+  // 加入房间：如果已经连接且认证过，直接 join；否则等 auth:ok
+  const doJoinRoom = () => {
     socket.emit('room:join', {
       roomId,
       player: store.player
     })
-  })
+  }
+
+  if (socket.connected) {
+    // 已连接，auth 刚刚重发出去，稍等一帧确保服务端处理完 auth 再 join
+    // 同时也监听 auth:ok 以防万一（用 once + 标志位防重复）
+    let joined = false
+    socket.once('player:auth:ok', () => {
+      if (!joined) { joined = true; doJoinRoom() }
+    })
+    // 100ms 兜底：如果 auth:ok 没来（已认证不会再发），直接 join
+    setTimeout(() => {
+      if (!joined) { joined = true; doJoinRoom() }
+    }, 100)
+  } else {
+    // 未连接，等 auth:ok
+    socket.once('player:auth:ok', doJoinRoom)
+  }
 
   // 房间状态更新（有人加入/离开）
   socket.on('room:update', ({ room: r }) => {
