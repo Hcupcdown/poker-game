@@ -46,7 +46,7 @@
 
           <!-- 当前下注 -->
           <div v-if="p.currentBet > 0 && p.status !== 'folded'" class="opp-bet">
-            <span class="bet-chip">🪙</span>
+            <span class="chip-icon"></span>
             <span class="bet-amount">{{ p.currentBet }}</span>
           </div>
 
@@ -89,7 +89,7 @@
           <!-- 底池 -->
           <div class="pot-display" v-if="gameState.pot > 0">
             <span class="pot-display-label">底池</span>
-            <span class="pot-display-value">🪙 {{ gameState.pot.toLocaleString() }}</span>
+            <span class="pot-display-value"><span class="chip-icon"></span>{{ gameState.pot.toLocaleString() }}</span>
           </div>
 
           <!-- 中央牌堆 -->
@@ -150,7 +150,7 @@
       <div v-if="actionToast" class="action-toast" :class="'toast-' + actionToast.type">
         <span class="toast-name">{{ actionToast.name }}</span>
         <span class="toast-verb">{{ ACTION_NAMES[actionToast.type] || actionToast.type }}</span>
-        <span v-if="actionToast.amount > 0" class="toast-amount">🪙 {{ actionToast.amount.toLocaleString() }}</span>
+        <span v-if="actionToast.amount > 0" class="toast-amount"><span class="chip-icon chip-icon-lg"></span>{{ actionToast.amount.toLocaleString() }}</span>
       </div>
     </transition>
 
@@ -1041,6 +1041,24 @@ function isRedCard(card) {
 
 .bet-chip { font-size: 12px; }
 .bet-amount { color: #f5c842; font-size: 12px; font-weight: 800; }
+
+/* 金色筹码圆形图标 */
+.chip-icon {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffe066, #f5c842 50%, #c8861a);
+  border: 1.5px solid rgba(255,255,255,0.45);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.3);
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.chip-icon-lg {
+  width: 18px;
+  height: 18px;
+}
 
 /* ===== 行动 Toast ===== */
 .action-toast {
