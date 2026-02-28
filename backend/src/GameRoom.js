@@ -213,6 +213,9 @@ class GameRoom {
       }
     }
 
+    // 预先发好5张公共牌（藏起来，阶段推进时翻出）
+    gs._hiddenCommunityCards = this.deck.dealMultiple(5)
+
     // 收取盲注
     this._postBlind(gs.players[sbIdx], this.smallBlind)
     this._postBlind(gs.players[bbIdx], this.bigBlind)
@@ -458,13 +461,14 @@ class GameRoom {
       }
     })
 
-    // 翻公共牌
+    // 翻公共牌（从预发的隐藏牌里取，不再现场 deal）
+    const hidden = gs._hiddenCommunityCards || []
     if (nextPhase === 'flop') {
-      gs.communityCards = this.deck.dealMultiple(3)
+      gs.communityCards = hidden.slice(0, 3)
     } else if (nextPhase === 'turn') {
-      gs.communityCards.push(this.deck.deal())
+      gs.communityCards = hidden.slice(0, 4)
     } else if (nextPhase === 'river') {
-      gs.communityCards.push(this.deck.deal())
+      gs.communityCards = hidden.slice(0, 5)
     } else if (nextPhase === 'showdown') {
       this._settleGame(true)
       return
@@ -481,10 +485,9 @@ class GameRoom {
    */
   _dealRemainingCommunityCards() {
     const gs = this.gameState
-    const needed = 5 - gs.communityCards.length
-    for (let i = 0; i < needed; i++) {
-      gs.communityCards.push(this.deck.deal())
-    }
+    // 从预发的隐藏公共牌里补全5张
+    const hidden = gs._hiddenCommunityCards || []
+    gs.communityCards = hidden.slice(0, 5)
     gs.phase = 'showdown'
     this._broadcastGameState()
     setTimeout(() => this._settleGame(true), 1000)

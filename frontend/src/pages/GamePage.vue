@@ -99,24 +99,35 @@
         </div>
 
         <div class="community-cards">
-          <transition-group name="community-flip" tag="div" class="community-cards-inner">
+          <div class="community-cards-inner">
             <div
-              v-for="(card, i) in communityCards"
-              :key="i + '-' + card"
-              class="community-card"
-              :class="{ 'card-red': isRedCard(card) }"
-              :style="{ animationDelay: (i % 3) * 0.12 + 's' }"
+              v-for="(slot, i) in communitySlots"
+              :key="i"
+              class="community-card-wrap"
+              :class="{ 'flip-revealed': slot.revealed }"
             >
-              <div class="card-rank">{{ getCardRank(card) }}</div>
-              <div class="card-suit">{{ getCardSuit(card) }}</div>
+              <!-- 背面 -->
+              <div class="comm-face comm-back">
+                <div class="comm-back-pattern"></div>
+              </div>
+              <!-- 正面 -->
+              <div
+                class="comm-face comm-front"
+                :class="{ 'card-red': slot.card && isRedCard(slot.card) }"
+              >
+                <template v-if="slot.card">
+                  <div class="card-rank">{{ getCardRank(slot.card) }}</div>
+                  <div class="card-suit">{{ getCardSuit(slot.card) }}</div>
+                </template>
+              </div>
             </div>
-          </transition-group>
-          <!-- 待翻牌位 -->
-          <div
-            v-for="n in (5 - communityCards.length)"
-            :key="'placeholder-' + n"
-            class="community-card placeholder"
-          >?</div>
+            <!-- 空占位（还没飞来的牌） -->
+            <div
+              v-for="n in (5 - communitySlots.length)"
+              :key="'ph-' + n"
+              class="community-card placeholder"
+            >?</div>
+          </div>
         </div>
 
         <!-- 最后操作提示 -->
@@ -432,18 +443,46 @@ function stopTimer() {
   clearInterval(timerInterval)
 }
 
+// ====== 公共牌 slots（背面占位 + 翻面状态）======
+// communitySlots: [{ card, revealed }]
+// - game:start 后立刻建5个背面 slot（发牌动画飞到这里）
+// - flop/turn/river 时，对应 slot 的 revealed 变 true（CSS 翻面）
+const communitySlots = ref([])   // { card: string, revealed: boolean }
+
+// 监听 communityCards 变化（flop/turn/river），逐张翻面
+watch(
+  () => gameState.value.communityCards,
+  (newCards) => {
+    if (!newCards || newCards.length === 0) return
+    // 更新 slot 内容并触发翻面动画
+    newCards.forEach((card, i) => {
+      if (!communitySlots.value[i]) {
+        communitySlots.value[i] = { card, revealed: false }
+      } else {
+        communitySlots.value[i].card = card
+      }
+      // 延迟触发翻面（每张间隔 150ms，视觉上逐张翻）
+      setTimeout(() => {
+        if (communitySlots.value[i]) {
+          communitySlots.value[i].revealed = true
+        }
+      }, i * 150 + 80)
+    })
+  },
+  { deep: true }
+)
+
 // ====== 发牌动画 ======
 const deckRef = ref(null)                     // 牌堆 DOM ref
-const flyingCards = ref([])                    // 飞行牌列表
-const cardRevealed = ref([false, false])        // 我的手牌翻面状态
-const dealAnimKey = ref(0)                     // 手牌动画 key（触发 CSS animation 重播）
-const cardsVisible = ref(true)                 // 是否显示真实手牌（发牌动画期间隐藏）
+const flyingCards = ref([])                   // 飞行牌列表
+const cardRevealed = ref([false, false])       // 我的手牌翻面状态
+const dealAnimKey = ref(0)                    // 手牌动画 key（触发 CSS animation 重播）
+const cardsVisible = ref(true)                // 是否显示真实手牌（发牌动画期间隐藏）
 const deckCardCount = computed(() => {
   // 52 - 已发手牌 - 公共牌
   const players = gameState.value.players || []
   const dealt = players.reduce((s, p) => s + (p.cards?.length || 0), 0)
-  const community = (gameState.value.communityCards || []).length
-  return Math.max(0, 52 - dealt - community)
+  return Math.max(0, 52 - dealt - 5)  // 5张公共牌总是预发出去
 })
 
 let flyIdCounter = 0
@@ -453,13 +492,17 @@ function toggleCardReveal(idx) {
 }
 
 /**
- * 触发发牌飞行动画
- * 按德扑顺序：从小盲开始，每人顺序各发1张，再循环发第2张（共 N*2 张）
+ * 触发发牌飞行动画：
+ *   第一阶段：按德扑顺序给每个玩家发2张手牌
+ *   第二阶段：手牌飞完后，再发5张公共牌（背面朝上，飞到公共牌区域）
  */
 async function triggerDealAnimation() {
   dealAnimKey.value++
   cardRevealed.value = [false, false]
   cardsVisible.value = false          // 先隐藏真实手牌槽
+
+  // 重置公共牌 slots（5张背面占位，发牌动画飞完后才显示）
+  communitySlots.value = []
 
   await nextTick()
 
@@ -473,14 +516,11 @@ async function triggerDealAnimation() {
   const deckCx = deckRect.left + deckRect.width / 2
   const deckCy = deckRect.top + deckRect.height / 2
 
-  // 收集目标位置：对手手牌槽 + 我的手牌槽
-  // 对手：.opp-cards（每个 opponent-slot 里的 .opp-cards）
-  // 我：.my-card-flip-wrap（my-cards 里）
   const gs = gameState.value
   const players = gs.players || []
   const myId = store.player?.id
 
-  // 按庄家位后一位开始的顺序排列所有玩家（发牌顺序）
+  // 按庄家位后一位开始的顺序排列（发牌顺序）
   const dealerIdx = players.findIndex(p => p.isDealer)
   const n = players.length
   const orderedPlayers = []
@@ -488,61 +528,92 @@ async function triggerDealAnimation() {
     orderedPlayers.push(players[(dealerIdx + i) % n])
   }
 
-  // 构造每张牌的目标坐标
-  // 先发第1轮（每人1张），再发第2轮
-  const allDeals = []
+  // 构造手牌发牌序列：先发第1轮，再发第2轮
+  const handDeals = []
   for (let round = 0; round < 2; round++) {
     for (const p of orderedPlayers) {
       if (p.status === 'folded') continue
-      allDeals.push({ playerId: p.id, cardIndex: round })
+      handDeals.push({ type: 'hand', playerId: p.id, cardIndex: round })
     }
   }
 
-  // 找各玩家的目标 DOM 位置
-  function getTargetCenter(playerId, cardIndex) {
+  // 构造公共牌发牌序列：手牌发完后飞5张到公共牌区
+  const commDeals = [0, 1, 2, 3, 4].map(i => ({ type: 'comm', cardIndex: i }))
+
+  // ---- 飞行牌目标位置计算 ----
+  const cardW = 36, cardH = 50
+
+  function getDeckOrigin() {
+    return {
+      startX: deckCx - cardW / 2,
+      startY: deckCy - cardH / 2
+    }
+  }
+
+  function getHandTarget(playerId, cardIndex) {
     if (playerId === myId) {
-      // 我的手牌槽
       const wraps = document.querySelectorAll('.my-card-flip-wrap')
       const el = wraps[cardIndex]
       if (!el) return null
       const r = el.getBoundingClientRect()
       return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
     } else {
-      // 对手手牌槽
       const slots = document.querySelectorAll('.opponent-slot')
       const oppIdx = opponents.value.findIndex(o => o.id === playerId)
       if (oppIdx < 0 || !slots[oppIdx]) return null
       const cardEls = slots[oppIdx].querySelectorAll('.card-back')
       const el = cardEls[cardIndex]
-      if (!el) {
-        // fallback: 用整个 slot 中心
-        const r = slots[oppIdx].getBoundingClientRect()
+      if (el) {
+        const r = el.getBoundingClientRect()
         return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
       }
-      const r = el.getBoundingClientRect()
+      const r = slots[oppIdx].getBoundingClientRect()
       return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
     }
   }
 
-  const cardW = 36, cardH = 50
+  function getCommTarget(cardIndex) {
+    // 公共牌区域的占位格
+    const wraps = document.querySelectorAll('.community-card-wrap')
+    const el = wraps[cardIndex]
+    if (!el) {
+      // fallback: 牌堆下方居中
+      return { x: deckCx, y: deckCy + 80 }
+    }
+    const r = el.getBoundingClientRect()
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+  }
+
+  // ---- 生成飞行牌（手牌 + 公共牌） ----
   const newCards = []
+  const handCount = handDeals.length
 
-  allDeals.forEach((deal, i) => {
-    const target = getTargetCenter(deal.playerId, deal.cardIndex)
+  handDeals.forEach((deal, i) => {
+    const target = getHandTarget(deal.playerId, deal.cardIndex)
     if (!target) return
-
-    const startX = deckCx - cardW / 2
-    const startY = deckCy - cardH / 2
-    const dx = target.x - cardW / 2 - startX
-    const dy = target.y - cardH / 2 - startY
-
+    const { startX, startY } = getDeckOrigin()
     newCards.push({
       id: ++flyIdCounter,
-      startX,
-      startY,
-      dx,
-      dy,
-      delay: i * 0.08,      // 每张间隔 80ms
+      startX, startY,
+      dx: target.x - cardW / 2 - startX,
+      dy: target.y - cardH / 2 - startY,
+      delay: i * 0.08,
+      flying: false
+    })
+  })
+
+  // 公共牌在手牌全部飞完之后开始（手牌最后一张落地时间 = handCount*0.08 + 0.38s）
+  const commStartDelay = handCount * 0.08 + 0.45
+
+  commDeals.forEach((deal, i) => {
+    const target = getCommTarget(deal.cardIndex)
+    const { startX, startY } = getDeckOrigin()
+    newCards.push({
+      id: ++flyIdCounter,
+      startX, startY,
+      dx: target.x - cardW / 2 - startX,
+      dy: target.y - cardH / 2 - startY,
+      delay: commStartDelay + i * 0.09,
       flying: false
     })
   })
@@ -550,17 +621,31 @@ async function triggerDealAnimation() {
   flyingCards.value = newCards
   await nextTick()
 
-  // 下一帧触发飞行（让 CSS transition 生效）
   requestAnimationFrame(() => {
     flyingCards.value.forEach(fc => { fc.flying = true })
   })
 
-  // 动画完成后清理飞行牌，显示真实手牌
-  const totalDuration = (allDeals.length * 0.08 + 0.4) * 1000
+  // 手牌动画完成后显示真实手牌槽
+  const handDuration = (handCount * 0.08 + 0.42) * 1000
+  setTimeout(() => {
+    cardsVisible.value = true
+  }, handDuration)
+
+  // 公共牌飞行完成后，在 communitySlots 里建5个背面占位
+  const commArriveDelay = (commStartDelay + 4 * 0.09 + 0.42) * 1000
   setTimeout(() => {
     flyingCards.value = []
-    cardsVisible.value = true
-  }, totalDuration + 100)
+    // 建5个背面 slot（card 先取 _hiddenCommunityCards，但不翻面）
+    const hidden = gameState.value._hiddenCommunityCards || []
+    communitySlots.value = hidden.map(card => ({ card, revealed: false }))
+    // 如果已经有公共牌（比如 all-in 一次性发完），直接翻面
+    const existing = gameState.value.communityCards || []
+    existing.forEach((_, i) => {
+      setTimeout(() => {
+        if (communitySlots.value[i]) communitySlots.value[i].revealed = true
+      }, i * 150 + 80)
+    })
+  }, commArriveDelay + 100)
 }
 
 // ====== Socket 事件 ======
@@ -1099,7 +1184,87 @@ function isRedCard(card) {
   pointer-events: none;
 }
 
-/* ===== 公共牌 ===== */
+/* ===== 公共牌（3D翻面） ===== */
+.community-card-wrap {
+  width: 46px;
+  height: 64px;
+  position: relative;
+  perspective: 500px;
+  flex-shrink: 0;
+}
+
+/* 正背面公共 */
+.comm-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 背面：默认朝前 */
+.comm-back {
+  background: linear-gradient(135deg, #1a3a5c 0%, #0d2137 50%, #1a3a5c 100%);
+  border: 1.5px solid rgba(255,255,255,0.2);
+  overflow: hidden;
+  transform: rotateY(0deg);
+}
+
+.comm-back-pattern {
+  position: absolute;
+  inset: 4px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background:
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 3px,
+      rgba(255,255,255,0.05) 3px,
+      rgba(255,255,255,0.05) 6px
+    );
+}
+
+/* 正面：初始朝后（翻转180°） */
+.comm-front {
+  background: #fff;
+  transform: rotateY(180deg);
+}
+
+.comm-front .card-rank {
+  font-size: 18px;
+  font-weight: 800;
+  color: #2c3e50;
+  line-height: 1;
+}
+
+.comm-front .card-suit {
+  font-size: 18px;
+  color: #2c3e50;
+  line-height: 1;
+}
+
+.comm-front.card-red .card-rank,
+.comm-front.card-red .card-suit {
+  color: #e74c3c;
+}
+
+/* 翻面后：背面转走，正面转来 */
+.community-card-wrap.flip-revealed .comm-back {
+  transform: rotateY(-180deg);
+}
+
+.community-card-wrap.flip-revealed .comm-front {
+  transform: rotateY(0deg);
+}
+
+/* ===== 旧的 community-card 占位（只剩 placeholder 用） ===== */
 .community-area {
   display: flex;
   flex-direction: column;
@@ -1163,20 +1328,7 @@ function isRedCard(card) {
   box-shadow: none;
 }
 
-/* 公共牌翻入动画 */
-.community-flip-enter-active {
-  animation: communityFlipIn 0.45s ease both;
-}
 
-.community-flip-leave-active {
-  display: none;
-}
-
-@keyframes communityFlipIn {
-  0%   { transform: rotateY(90deg) translateY(-10px) scale(0.8); opacity: 0; }
-  60%  { transform: rotateY(-8deg) translateY(2px) scale(1.05); opacity: 1; }
-  100% { transform: rotateY(0) translateY(0) scale(1); opacity: 1; }
-}
 
 .last-action {
   background: rgba(0,0,0,0.4);
