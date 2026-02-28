@@ -64,7 +64,6 @@
                 v-for="n in 2"
                 :key="n"
                 class="card-back"
-                :style="{ visibility: oppCardsVisible ? 'visible' : 'hidden' }"
               >
                 <div class="card-back-inner">🂠</div>
               </div>
@@ -147,7 +146,7 @@
         v-for="fc in flyingCards"
         :key="fc.id"
         class="flying-card"
-        :class="{ 'flying-card-go': fc.flying }"
+        :class="{ 'flying-card-go': fc.flying, 'flying-card-opp': fc.isOpp }"
         :style="{
           left: fc.startX + 'px',
           top: fc.startY + 'px',
@@ -477,7 +476,6 @@ const flyingCards = ref([])                   // 飞行牌列表
 const cardRevealed = ref([false, false])       // 我的手牌翻面状态
 const dealAnimKey = ref(0)                    // 手牌动画 key（触发 CSS animation 重播）
 const cardsVisible = ref(true)                // 是否显示真实手牌（发牌动画期间隐藏）
-const oppCardsVisible = ref(true)             // 对手背面牌是否可见（发牌动画期间隐藏，飞完后显示）
 const deckCardCount = computed(() => {
   // 52 - 已发手牌 - 公共牌
   const players = gameState.value.players || []
@@ -500,7 +498,6 @@ async function triggerDealAnimation() {
   dealAnimKey.value++
   cardRevealed.value = [false, false]
   cardsVisible.value = false          // 先隐藏真实手牌槽
-  oppCardsVisible.value = false       // 隐藏对手背面牌（飞行途中不穿帮）
 
   // 重置公共牌 slots（5张背面占位，发牌动画飞完后才显示）
   communitySlots.value = []
@@ -553,22 +550,20 @@ async function triggerDealAnimation() {
 
   function getHandTarget(playerId, cardIndex) {
     if (playerId === myId) {
+      // 我的牌：飞到手牌槽（始终存在于 DOM）
       const wraps = document.querySelectorAll('.my-card-flip-wrap')
       const el = wraps[cardIndex]
       if (!el) return null
       const r = el.getBoundingClientRect()
       return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
     } else {
+      // 对手牌：飞到对手头像中心消失
       const slots = document.querySelectorAll('.opponent-slot')
       const oppIdx = opponents.value.findIndex(o => o.id === playerId)
       if (oppIdx < 0 || !slots[oppIdx]) return null
-      const cardEls = slots[oppIdx].querySelectorAll('.card-back')
-      const el = cardEls[cardIndex]
-      if (el) {
-        const r = el.getBoundingClientRect()
-        return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
-      }
-      const r = slots[oppIdx].getBoundingClientRect()
+      const avatarEl = slots[oppIdx].querySelector('.opp-avatar-wrap')
+      const target = avatarEl || slots[oppIdx]
+      const r = target.getBoundingClientRect()
       return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
     }
   }
@@ -599,6 +594,7 @@ async function triggerDealAnimation() {
       dx: target.x - cardW / 2 - startX,
       dy: target.y - cardH / 2 - startY,
       delay: i * 0.08,
+      isOpp: deal.playerId !== myId,   // 对手牌：落地缩小消失
       flying: false
     })
   })
@@ -626,11 +622,10 @@ async function triggerDealAnimation() {
     flyingCards.value.forEach(fc => { fc.flying = true })
   })
 
-  // 手牌动画完成后显示真实手牌槽和对手背面牌
+  // 手牌动画完成后显示真实手牌槽
   const handDuration = (handCount * 0.08 + 0.42) * 1000
   setTimeout(() => {
     cardsVisible.value = true
-    oppCardsVisible.value = true
   }, handDuration)
 
   // 公共牌飞行完成后，在 communitySlots 里建5个背面占位
@@ -1067,6 +1062,14 @@ function isRedCard(card) {
   transition:
     transform 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94) var(--delay),
     opacity 0.1s ease calc(0.36s + var(--delay));
+}
+
+/* 对手牌：飞到头像位置后缩小消失 */
+.flying-card-go.flying-card-opp {
+  transform: translate(var(--dx), var(--dy)) rotate(var(--rot, 5deg)) scale(0);
+  transition:
+    transform 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94) var(--delay),
+    opacity 0.15s ease calc(0.38s + var(--delay));
 }
 
 .flying-card-back {
