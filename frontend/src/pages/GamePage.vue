@@ -57,14 +57,14 @@
           <!-- 弃牌遮罩 -->
           <div v-if="p.status === 'folded'" class="fold-mask">弃牌</div>
 
-          <!-- 手牌（背面，有发牌动画） -->
+          <!-- 手牌（背面） -->
           <div class="opp-cards">
             <template v-if="p.status !== 'folded'">
               <div
                 v-for="n in 2"
                 :key="n"
-                class="card-back deal-anim"
-                :style="{ animationDelay: (dealAnimKey * 0.1 + (i * 2 + n - 1) * 0.08) + 's' }"
+                class="card-back"
+                v-show="cardsVisible"
               >
                 <div class="card-back-inner">🂠</div>
               </div>
@@ -86,8 +86,18 @@
         </div>
       </div>
 
-      <!-- 公共牌区域 -->
+      <!-- 公共牌区域 + 中央牌堆 -->
       <div class="community-area">
+
+        <!-- 中央牌堆 -->
+        <div class="deck-pile" ref="deckRef">
+          <div v-for="n in 4" :key="n" class="deck-card" :style="{ '--i': n }"></div>
+          <div class="deck-top">
+            <div class="deck-back-pattern"></div>
+            <span class="deck-count">{{ deckCardCount }}</span>
+          </div>
+        </div>
+
         <div class="community-cards">
           <transition-group name="community-flip" tag="div" class="community-cards-inner">
             <div
@@ -120,15 +130,35 @@
 
     </div>
 
+    <!-- 飞行牌层（Teleport 到 body，全屏绝对定位） -->
+    <teleport to="body">
+      <div
+        v-for="fc in flyingCards"
+        :key="fc.id"
+        class="flying-card"
+        :class="{ 'flying-card-go': fc.flying }"
+        :style="{
+          left: fc.startX + 'px',
+          top: fc.startY + 'px',
+          '--dx': fc.dx + 'px',
+          '--dy': fc.dy + 'px',
+          '--delay': fc.delay + 's',
+        }"
+      >
+        <div class="flying-card-back"></div>
+      </div>
+    </teleport>
+
     <!-- ===== 我的区域 ===== -->
     <div class="my-area">
       <!-- 我的手牌 -->
       <div class="my-cards">
+        <template v-if="cardsVisible">
         <div
           v-for="(card, i) in myCards"
           :key="i + '-' + card + '-' + dealAnimKey"
           class="my-card-flip-wrap"
-          :style="{ animationDelay: (dealAnimKey * 0.1 + i * 0.15) + 's' }"
+          :style="{ animationDelay: (i * 0.15) + 's' }"
           :class="{ 'deal-in': true }"
           @click="toggleCardReveal(i)"
         >
@@ -154,8 +184,9 @@
             </div>
           </div>
         </div>
-        <!-- 手牌背面（未开始） -->
-        <div v-if="myCards.length === 0" v-for="n in 2" :key="n" class="my-card face-back back-card">
+        </template>
+        <!-- 手牌背面（未开始 或 发牌动画中） -->
+        <div v-if="myCards.length === 0 || !cardsVisible" v-for="n in 2" :key="'ph'+n" class="my-card face-back back-card">
           🂠
         </div>
       </div>
@@ -305,7 +336,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useGameStore } from '../stores/gameStore'
 import {
@@ -401,17 +432,135 @@ function stopTimer() {
   clearInterval(timerInterval)
 }
 
-// ====== 发牌动画 & 翻牌状态 ======
-const dealAnimKey = ref(0)          // 每次发牌时自增，触发重新动画
-const cardRevealed = ref([false, false])   // 我的手牌是否已翻面
+// ====== 发牌动画 ======
+const deckRef = ref(null)                     // 牌堆 DOM ref
+const flyingCards = ref([])                    // 飞行牌列表
+const cardRevealed = ref([false, false])        // 我的手牌翻面状态
+const dealAnimKey = ref(0)                     // 手牌动画 key（触发 CSS animation 重播）
+const cardsVisible = ref(true)                 // 是否显示真实手牌（发牌动画期间隐藏）
+const deckCardCount = computed(() => {
+  // 52 - 已发手牌 - 公共牌
+  const players = gameState.value.players || []
+  const dealt = players.reduce((s, p) => s + (p.cards?.length || 0), 0)
+  const community = (gameState.value.communityCards || []).length
+  return Math.max(0, 52 - dealt - community)
+})
+
+let flyIdCounter = 0
 
 function toggleCardReveal(idx) {
   cardRevealed.value[idx] = !cardRevealed.value[idx]
 }
 
-function triggerDealAnimation() {
+/**
+ * 触发发牌飞行动画
+ * 按德扑顺序：从小盲开始，每人顺序各发1张，再循环发第2张（共 N*2 张）
+ */
+async function triggerDealAnimation() {
   dealAnimKey.value++
-  cardRevealed.value = [false, false]  // 每轮重置为背面
+  cardRevealed.value = [false, false]
+  cardsVisible.value = false          // 先隐藏真实手牌槽
+
+  await nextTick()
+
+  const deckEl = deckRef.value
+  if (!deckEl) {
+    cardsVisible.value = true
+    return
+  }
+
+  const deckRect = deckEl.getBoundingClientRect()
+  const deckCx = deckRect.left + deckRect.width / 2
+  const deckCy = deckRect.top + deckRect.height / 2
+
+  // 收集目标位置：对手手牌槽 + 我的手牌槽
+  // 对手：.opp-cards（每个 opponent-slot 里的 .opp-cards）
+  // 我：.my-card-flip-wrap（my-cards 里）
+  const gs = gameState.value
+  const players = gs.players || []
+  const myId = store.player?.id
+
+  // 按庄家位后一位开始的顺序排列所有玩家（发牌顺序）
+  const dealerIdx = players.findIndex(p => p.isDealer)
+  const n = players.length
+  const orderedPlayers = []
+  for (let i = 1; i <= n; i++) {
+    orderedPlayers.push(players[(dealerIdx + i) % n])
+  }
+
+  // 构造每张牌的目标坐标
+  // 先发第1轮（每人1张），再发第2轮
+  const allDeals = []
+  for (let round = 0; round < 2; round++) {
+    for (const p of orderedPlayers) {
+      if (p.status === 'folded') continue
+      allDeals.push({ playerId: p.id, cardIndex: round })
+    }
+  }
+
+  // 找各玩家的目标 DOM 位置
+  function getTargetCenter(playerId, cardIndex) {
+    if (playerId === myId) {
+      // 我的手牌槽
+      const wraps = document.querySelectorAll('.my-card-flip-wrap')
+      const el = wraps[cardIndex]
+      if (!el) return null
+      const r = el.getBoundingClientRect()
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+    } else {
+      // 对手手牌槽
+      const slots = document.querySelectorAll('.opponent-slot')
+      const oppIdx = opponents.value.findIndex(o => o.id === playerId)
+      if (oppIdx < 0 || !slots[oppIdx]) return null
+      const cardEls = slots[oppIdx].querySelectorAll('.card-back')
+      const el = cardEls[cardIndex]
+      if (!el) {
+        // fallback: 用整个 slot 中心
+        const r = slots[oppIdx].getBoundingClientRect()
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+      }
+      const r = el.getBoundingClientRect()
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+    }
+  }
+
+  const cardW = 36, cardH = 50
+  const newCards = []
+
+  allDeals.forEach((deal, i) => {
+    const target = getTargetCenter(deal.playerId, deal.cardIndex)
+    if (!target) return
+
+    const startX = deckCx - cardW / 2
+    const startY = deckCy - cardH / 2
+    const dx = target.x - cardW / 2 - startX
+    const dy = target.y - cardH / 2 - startY
+
+    newCards.push({
+      id: ++flyIdCounter,
+      startX,
+      startY,
+      dx,
+      dy,
+      delay: i * 0.08,      // 每张间隔 80ms
+      flying: false
+    })
+  })
+
+  flyingCards.value = newCards
+  await nextTick()
+
+  // 下一帧触发飞行（让 CSS transition 生效）
+  requestAnimationFrame(() => {
+    flyingCards.value.forEach(fc => { fc.flying = true })
+  })
+
+  // 动画完成后清理飞行牌，显示真实手牌
+  const totalDuration = (allDeals.length * 0.08 + 0.4) * 1000
+  setTimeout(() => {
+    flyingCards.value = []
+    cardsVisible.value = true
+  }, totalDuration + 100)
 }
 
 // ====== Socket 事件 ======
@@ -754,7 +903,103 @@ function isRedCard(card) {
   position: relative;
 }
 
-/* ===== 发牌动画（背面飞入） ===== */
+/* ===== 中央牌堆 ===== */
+.deck-pile {
+  position: relative;
+  width: 44px;
+  height: 62px;
+  margin: 0 auto 8px;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.deck-card {
+  position: absolute;
+  width: 44px;
+  height: 62px;
+  background: linear-gradient(135deg, #1a3a5c 0%, #0d2137 50%, #1a3a5c 100%);
+  border-radius: 6px;
+  border: 1.5px solid rgba(255,255,255,0.18);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  /* 叠叠乐偏移 */
+  transform: translate(calc(var(--i) * -1.2px), calc(var(--i) * -1.2px));
+}
+
+.deck-top {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #1a3a5c 0%, #0d2137 50%, #1a3a5c 100%);
+  border-radius: 6px;
+  border: 1.5px solid rgba(255,255,255,0.25);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.1);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.deck-back-pattern {
+  position: absolute;
+  inset: 4px;
+  border-radius: 3px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background:
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 3px,
+      rgba(255,255,255,0.05) 3px,
+      rgba(255,255,255,0.05) 6px
+    );
+}
+
+.deck-count {
+  position: relative;
+  z-index: 1;
+  color: rgba(255,255,255,0.55);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* ===== 飞行牌（全屏绝对定位） ===== */
+.flying-card {
+  position: fixed;
+  width: 36px;
+  height: 50px;
+  z-index: 9999;
+  pointer-events: none;
+  /* 初始状态：在牌堆上方 */
+  transform: rotate(0deg);
+  transition: none;
+}
+
+.flying-card-go {
+  /* 飞行时触发 transition */
+  transform: translate(var(--dx), var(--dy)) rotate(var(--rot, 5deg));
+  transition:
+    transform 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94) var(--delay),
+    opacity 0.1s ease calc(0.36s + var(--delay));
+}
+
+.flying-card-back {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #1a3a5c 0%, #0d2137 50%, #1a3a5c 100%);
+  border-radius: 5px;
+  border: 1.5px solid rgba(255,255,255,0.25);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 3px,
+      rgba(255,255,255,0.05) 3px,
+      rgba(255,255,255,0.05) 6px
+    );
+}
+
+
 .card-back {
   font-size: 22px;
   line-height: 1;
