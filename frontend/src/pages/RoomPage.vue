@@ -147,22 +147,16 @@ function applyRoomUpdate(data) {
 onMounted(() => {
   if (!store.player) return router.replace('/login')
 
-  // 连接并认证
+  // 连接并触发认证（connectSocket 内部会 emit player:auth）
   const socket = connectSocket(store.player)
 
-  // 认证完成后加入房间
-  const doJoin = () => {
+  // 始终等 auth:ok 之后再加入房间，确保 socketToPlayer 映射已建立
+  socket.once('player:auth:ok', () => {
     socket.emit('room:join', {
       roomId,
       player: store.player
     })
-  }
-
-  // 可能已经认证过了，直接加入；也可能刚连接，等 auth:ok
-  if (socket.connected) {
-    doJoin()
-  }
-  socket.on('player:auth:ok', doJoin)
+  })
 
   // 房间状态更新（有人加入/离开）
   socket.on('room:update', ({ room: r }) => {

@@ -146,6 +146,13 @@ onMounted(() => {
   // 确保 socket 已连接并认证
   const socket = connectSocket(store.player)
 
+  // 收到服务端确认后，同步更新本地 player（以后端 id 为准）
+  socket.once('player:auth:ok', ({ player: serverPlayer }) => {
+    if (serverPlayer && serverPlayer.id !== store.player?.id) {
+      store.setPlayer({ ...store.player, ...serverPlayer })
+    }
+  })
+
   // 监听创建成功
   socket.on('room:created', ({ room }) => {
     creating.value = false

@@ -114,9 +114,9 @@ function handleLogin() {
   }
   loading.value = true
 
-  // 生成本地玩家对象（真实项目这里调后端 API）
+  // 每次登录都生成全新 id（防止同浏览器多窗口 localStorage 冲突，测试时用无痕/不同浏览器）
   const playerData = {
-    id: 'p_' + Math.random().toString(36).slice(2, 10),
+    id: 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     nickname: nickname.value.trim(),
     avatar: selectedAvatar.value,
     chips: selectedChips.value,

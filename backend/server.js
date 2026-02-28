@@ -358,6 +358,7 @@ io.on('connection', (socket) => {
     try {
       room.handlePlayerAction(playerId, type, amount)
     } catch (err) {
+      console.error(`[Action] 玩家 ${playerId} 行动失败: ${err.message} (currentPlayerId=${room.gameState?.currentPlayerId})`)
       socket.emit('error', { message: err.message })
     }
   })

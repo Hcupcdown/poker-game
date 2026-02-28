@@ -308,11 +308,11 @@ const gameState = ref({
   pot: 0,
   bigBlind: 20,
   currentPlayerId: null,
-  players: store.gameState?.players || [],
+  players: [],
   lastAction: null
 })
 
-// 如果从 store 恢复了状态（刚从 RoomPage 跳转过来），直接用
+// 如果从 store 恢复了状态（刚从 RoomPage 跳转过来），直接用其值（注意用 .value）
 if (store.gameState) {
   gameState.value = store.gameState
 }
