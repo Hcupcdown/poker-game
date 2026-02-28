@@ -107,46 +107,94 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useGameStore } from '../stores/gameStore'
 import { showToast } from 'vant'
+import { connectSocket, getSocket } from '../utils/socket'
 
 const router = useRouter()
 const route = useRoute()
 const store = useGameStore()
 
-const roomId = route.params.id
+const roomId = route.params.id.toUpperCase()
 const starting = ref(false)
 
-// 模拟房间数据（真实版从 store/socket 获取）
-const room = reactive(
-  store.room || {
-    id: roomId,
-    ownerId: store.player?.id,
-    smallBlind: 10,
-    bigBlind: 20,
-    maxPlayers: 6,
-    status: 'waiting'
-  }
-)
+// 房间数据（由 socket 同步）
+const room = reactive({
+  id: roomId,
+  ownerId: '',
+  smallBlind: 10,
+  bigBlind: 20,
+  maxPlayers: 6,
+  status: 'waiting'
+})
 
-// 玩家列表（模拟多人：真实用 socket 同步）
-const players = ref([
-  store.player,
-  // 演示用的模拟玩家（真实时由 socket 推送）
-])
+const players = ref([])
 
 const isOwner = computed(() => store.player?.id === room.ownerId)
 const emptySeats = computed(() => {
   const n = room.maxPlayers - players.value.length
-  return Math.min(Math.max(n, 0), 3) // 最多显示3个空位
+  return Math.min(Math.max(n, 0), 3)
 })
 
+function applyRoomUpdate(data) {
+  Object.assign(room, data)
+  players.value = data.players || []
+  store.setRoom(data)
+}
+
 onMounted(() => {
-  // 真实版本：连接 socket，加入房间
-  // socket.emit('room:join', { roomId, player: store.player })
-  // socket.on('room:update', (data) => { players.value = data.players })
+  if (!store.player) return router.replace('/login')
+
+  // 连接并认证
+  const socket = connectSocket(store.player)
+
+  // 认证完成后加入房间
+  const doJoin = () => {
+    socket.emit('room:join', {
+      roomId,
+      player: store.player
+    })
+  }
+
+  // 可能已经认证过了，直接加入；也可能刚连接，等 auth:ok
+  if (socket.connected) {
+    doJoin()
+  }
+  socket.on('player:auth:ok', doJoin)
+
+  // 房间状态更新（有人加入/离开）
+  socket.on('room:update', ({ room: r }) => {
+    applyRoomUpdate(r)
+    starting.value = false
+  })
+
+  // 游戏开始，跳转到游戏页
+  socket.on('game:start', ({ gameState }) => {
+    store.setGameState(gameState)
+    router.push(`/game/${roomId}`)
+  })
+
+  // 被踢出
+  socket.on('room:kicked', ({ message }) => {
+    showToast({ message: message || '你被移出了房间', icon: 'fail' })
+    router.replace('/lobby')
+  })
+
+  socket.on('error', ({ message }) => {
+    starting.value = false
+    showToast({ message: message || '操作失败', icon: 'fail' })
+  })
+})
+
+onUnmounted(() => {
+  const socket = getSocket()
+  socket.off('player:auth:ok')
+  socket.off('room:update')
+  socket.off('game:start')
+  socket.off('room:kicked')
+  socket.off('error')
 })
 
 function copyCode() {
@@ -160,15 +208,13 @@ function copyCode() {
 function handleStart() {
   if (players.value.length < 2) return
   starting.value = true
-  // 真实版：socket.emit('room:start')
-  // 这里直接跳转演示
-  setTimeout(() => {
-    starting.value = false
-    router.push(`/game/${roomId}`)
-  }, 800)
+  getSocket().emit('room:start')
+  // 超时兜底
+  setTimeout(() => { starting.value = false }, 5000)
 }
 
 function handleBack() {
+  getSocket().emit('room:leave')
   router.push('/lobby')
 }
 </script>

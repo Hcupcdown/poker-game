@@ -286,11 +286,12 @@ import {
   RANK_DISPLAY, parseCard, formatChips
 } from '../utils/cardUtils'
 import { showToast } from 'vant'
+import { connectSocket, getSocket } from '../utils/socket'
 
 const route = useRoute()
 const router = useRouter()
 const store = useGameStore()
-const roomId = route.params.id
+const roomId = route.params.id.toUpperCase()
 
 const ACTION_NAMES = {
   fold: '弃牌',
@@ -300,32 +301,21 @@ const ACTION_NAMES = {
   allin: 'All In'
 }
 
-// ====== 模拟游戏数据（后续接 socket） ======
-const mockPlayers = [
-  {
-    id: store.player?.id,
-    nickname: store.player?.nickname,
-    avatar: store.player?.avatar,
-    chips: 850,
-    currentBet: 20,
-    status: 'active',
-    cards: ['Ah', 'Kd'],
-    seatIndex: 0
-  },
-  { id: 'bot1', nickname: '小虎', avatar: '🐯', chips: 1200, currentBet: 40, status: 'active', cards: ['back', 'back'], seatIndex: 1 },
-  { id: 'bot2', nickname: '老鹰', avatar: '🦅', chips: 600,  currentBet: 0,  status: 'folded', cards: ['back', 'back'], seatIndex: 2 },
-  { id: 'bot3', nickname: '狐狸', avatar: '🦊', chips: 930,  currentBet: 40, status: 'active', cards: ['back', 'back'], seatIndex: 3 },
-]
-
+// ====== 游戏状态（由 socket 实时同步） ======
 const gameState = ref({
-  phase: 'flop',
-  communityCards: ['Qh', 'Jc', '9d'],
-  pot: 180,
+  phase: 'waiting',
+  communityCards: [],
+  pot: 0,
   bigBlind: 20,
-  currentPlayerId: store.player?.id,
-  players: mockPlayers,
+  currentPlayerId: null,
+  players: store.gameState?.players || [],
   lastAction: null
 })
+
+// 如果从 store 恢复了状态（刚从 RoomPage 跳转过来），直接用
+if (store.gameState) {
+  gameState.value = store.gameState
+}
 
 // ====== 计算属性 ======
 const me = computed(() => gameState.value.players.find(p => p.id === store.player?.id))
@@ -338,16 +328,15 @@ const lastAction = computed(() => gameState.value.lastAction)
 
 const isMyTurn = computed(() => gameState.value.currentPlayerId === store.player?.id)
 
-// 跟注金额（最高下注 - 我已下注）
 const callAmount = computed(() => {
-  const maxBet = Math.max(...gameState.value.players.map(p => p.currentBet || 0))
+  const maxBet = Math.max(0, ...gameState.value.players.map(p => p.currentBet || 0))
   return Math.min(maxBet - (myCurrentBet.value || 0), myChips.value)
 })
 
 const canCheck = computed(() => callAmount.value <= 0)
 const minRaise = computed(() => (gameState.value.bigBlind || 20) * 2)
 
-// 加注
+// 加注滑块
 const showRaiseSlider = ref(false)
 const raiseAmount = ref(minRaise.value)
 
@@ -362,7 +351,7 @@ const raisePresets = computed(() => {
   ].filter(p => p.amount >= minRaise.value && p.amount <= myChips.value)
 })
 
-// 倒计时
+// ====== 倒计时 ======
 const timeLeft = ref(30)
 const timerProgress = ref(100)
 let timerInterval = null
@@ -381,7 +370,7 @@ function startTimer() {
     timerProgress.value = (timeLeft.value / 30) * 100
     if (timeLeft.value <= 0) {
       stopTimer()
-      doAction('fold') // 超时自动弃牌
+      doAction('fold')
     }
   }, 1000)
 }
@@ -390,7 +379,63 @@ function stopTimer() {
   clearInterval(timerInterval)
 }
 
-onUnmounted(() => stopTimer())
+// ====== Socket 事件 ======
+onMounted(() => {
+  if (!store.player) return router.replace('/login')
+
+  const socket = connectSocket(store.player)
+
+  // 游戏状态更新（行动后广播）
+  socket.on('game:state', (state) => {
+    gameState.value = state
+    store.setGameState(state)
+  })
+
+  // 新一局开始
+  socket.on('game:start', ({ gameState: gs }) => {
+    gameState.value = gs
+    store.setGameState(gs)
+  })
+
+  // 玩家行动日志
+  socket.on('player:acted', ({ playerId, type, amount, nickname }) => {
+    const msgs = {
+      fold: `${nickname} 弃牌`,
+      check: `${nickname} 看牌`,
+      call: `${nickname} 跟注 ${amount || ''}`,
+      raise: `${nickname} 加注到 ${amount}`,
+      allin: `${nickname} All In！`
+    }
+    store.addLog(msgs[type] || `${nickname} ${type}`)
+  })
+
+  // 结算
+  socket.on('game:result', (result) => {
+    roundResult.value = result
+    showResult.value = true
+    store.setGameState(null)
+  })
+
+  // 玩家断线通知
+  socket.on('player:disconnected', ({ nickname }) => {
+    store.addLog(`${nickname} 断线`)
+  })
+
+  socket.on('error', ({ message }) => {
+    showToast({ message: message || '出错了', icon: 'fail' })
+  })
+})
+
+onUnmounted(() => {
+  stopTimer()
+  const socket = getSocket()
+  socket.off('game:state')
+  socket.off('game:start')
+  socket.off('player:acted')
+  socket.off('game:result')
+  socket.off('player:disconnected')
+  socket.off('error')
+})
 
 // ====== 操作 ======
 function toggleRaise() {
@@ -412,49 +457,19 @@ function doAction(type, amount) {
     call: `${store.player?.nickname} 跟注 ${callAmount.value}`,
     raise: `${store.player?.nickname} 加注到 ${amount}`
   }
-
   store.addLog(actionMsg[type] || type)
   showToast({ message: ACTION_NAMES[type], duration: 800, position: 'middle' })
 
-  // 真实版：socket.emit('player:action', { type, amount })
-  // 模拟：轮到下一个人
-  simulateNextTurn()
-}
-
-// 模拟轮转（演示用）
-let turnIndex = 0
-function simulateNextTurn() {
-  const active = gameState.value.players.filter(p => p.status === 'active')
-  if (active.length <= 1) {
-    showResult.value = true
-    return
-  }
-  turnIndex = (turnIndex + 1) % active.length
-  gameState.value.currentPlayerId = active[turnIndex].id
-  // 模拟 bot 自动行动
-  if (active[turnIndex].id !== store.player?.id) {
-    setTimeout(() => {
-      const botActions = ['call', 'check', 'call', 'fold']
-      const action = botActions[Math.floor(Math.random() * botActions.length)]
-      store.addLog(`${active[turnIndex].nickname} ${ACTION_NAMES[action]}`)
-      simulateNextTurn()
-    }, 1200)
-  }
+  getSocket().emit('player:action', { type, amount: amount || callAmount.value })
 }
 
 // ====== 结算 ======
 const showResult = ref(false)
-const roundResult = ref({
-  winner: { nickname: '小虎', avatar: '🐯', handName: '同花顺', gain: 180 },
-  allHands: [
-    { id: store.player?.id, nickname: store.player?.nickname, avatar: store.player?.avatar, cards: ['Ah', 'Kd'], handName: '一对A', isWinner: false },
-    { id: 'bot1', nickname: '小虎', avatar: '🐯', cards: ['Tc', '8h'], handName: '同花顺', isWinner: true },
-  ]
-})
+const roundResult = ref(null)
 
 function nextRound() {
   showResult.value = false
-  // 重置状态或跳回等待室
+  getSocket().emit('game:next_round')
   router.push(`/room/${roomId}`)
 }
 

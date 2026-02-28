@@ -118,10 +118,11 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '../stores/gameStore'
 import { showToast, showLoadingToast, closeToast } from 'vant'
+import { connectSocket, getSocket } from '../utils/socket'
 
 const router = useRouter()
 const store = useGameStore()
@@ -141,43 +142,60 @@ const createForm = reactive({
 onMounted(() => {
   const saved = localStorage.getItem('poker_recent_rooms')
   if (saved) recentRooms.value = JSON.parse(saved)
+
+  // 确保 socket 已连接并认证
+  const socket = connectSocket(store.player)
+
+  // 监听创建成功
+  socket.on('room:created', ({ room }) => {
+    creating.value = false
+    store.setRoom(room)
+    saveRecentRoom(room.id)
+    router.push(`/room/${room.id}`)
+  })
+
+  socket.on('error', ({ message }) => {
+    creating.value = false
+    joining.value = false
+    showToast({ message: message || '操作失败', icon: 'fail' })
+  })
+})
+
+onUnmounted(() => {
+  const socket = getSocket()
+  socket.off('room:created')
+  socket.off('error')
 })
 
 function handleCreate() {
+  if (!store.player) {
+    showToast('请先登录')
+    return router.replace('/login')
+  }
   creating.value = true
-  // 生成 6 位房间码
-  const roomId = Math.random().toString(36).slice(2, 8).toUpperCase()
-  const room = {
-    id: roomId,
-    ownerId: store.player.id,
-    ownerName: store.player.nickname,
-    players: [store.player],
-    maxPlayers: createForm.maxPlayers,
+  const socket = getSocket()
+  socket.emit('room:create', {
     smallBlind: createForm.smallBlind,
     bigBlind: createForm.bigBlind,
-    status: 'waiting',
-    createdAt: Date.now()
-  }
-  store.setRoom(room)
-  saveRecentRoom(roomId)
-
-  setTimeout(() => {
-    creating.value = false
-    router.push(`/room/${roomId}`)
-  }, 500)
+    maxPlayers: createForm.maxPlayers
+  })
+  // 超时兜底
+  setTimeout(() => { creating.value = false }, 5000)
 }
 
 function handleJoin() {
-  if (!joinCode.value || joinCode.value.length < 4) {
+  const code = joinCode.value.trim().toUpperCase()
+  if (!code || code.length < 4) {
     showToast('请输入正确的房间码')
     return
   }
   joining.value = true
-  saveRecentRoom(joinCode.value)
-  setTimeout(() => {
-    joining.value = false
-    router.push(`/room/${joinCode.value}`)
-  }, 500)
+  const socket = getSocket()
+  // 直接跳转到 RoomPage，由 RoomPage 负责发 room:join
+  store.setRoom(null)
+  saveRecentRoom(code)
+  joining.value = false
+  router.push(`/room/${code}`)
 }
 
 function rejoinRoom(r) {
