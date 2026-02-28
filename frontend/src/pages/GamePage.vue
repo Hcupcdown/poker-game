@@ -160,16 +160,16 @@
     </teleport>
 
     <!-- ===== 我的区域 ===== -->
-    <div class="my-area">
+    <div class="my-area" ref="myAreaRef">
       <!-- 我的手牌 -->
-      <div class="my-cards">
+      <div class="my-cards" ref="myCardsRef">
         <!-- 我的手牌（始终渲染 wrap 以便发牌动画定位；cardsVisible 控制内容显隐） -->
         <div
           v-for="(card, i) in (myCards.length ? myCards : ['', ''])"
           :key="i + '-' + (myCards[i] || 'ph') + '-' + dealAnimKey"
           class="my-card-flip-wrap"
           :style="{ animationDelay: (i * 0.15) + 's', visibility: cardsVisible && myCards.length ? 'visible' : 'hidden' }"
-          :class="{ 'deal-in': cardsVisible && myCards.length }"
+          :class="{ 'deal-in': false }"
           @click="myCards.length && cardsVisible && toggleCardReveal(i)"
         >
           <!-- 3D 翻转容器 -->
@@ -472,6 +472,7 @@ watch(
 
 // ====== 发牌动画 ======
 const deckRef = ref(null)                     // 牌堆 DOM ref
+const myCardsRef = ref(null)                  // 我的手牌容器 ref
 const flyingCards = ref([])                   // 飞行牌列表
 const cardRevealed = ref([false, false])       // 我的手牌翻面状态
 const dealAnimKey = ref(0)                    // 手牌动画 key（触发 CSS animation 重播）
@@ -550,12 +551,16 @@ async function triggerDealAnimation() {
 
   function getHandTarget(playerId, cardIndex) {
     if (playerId === myId) {
-      // 我的牌：飞到手牌槽（始终存在于 DOM）
-      const wraps = document.querySelectorAll('.my-card-flip-wrap')
-      const el = wraps[cardIndex]
-      if (!el) return null
-      const r = el.getBoundingClientRect()
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+      // 用手牌容器坐标推算每张牌中心（容器 flex 居中，gap=14px，牌宽60px）
+      const container = myCardsRef.value
+      if (!container) return null
+      const r = container.getBoundingClientRect()
+      // 两张牌总宽 = 60+14+60 = 134px，从容器中心向两侧分布
+      const centerX = r.left + r.width / 2
+      const centerY = r.top + r.height / 2
+      // cardIndex 0 → 左牌，1 → 右牌
+      const offset = cardIndex === 0 ? -37 : 37   // (60+14)/2 = 37
+      return { x: centerX + offset, y: centerY }
     } else {
       // 对手牌：飞到对手头像中心消失
       const slots = document.querySelectorAll('.opponent-slot')
