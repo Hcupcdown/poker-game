@@ -332,11 +332,17 @@ function leaveCurrentRoom(socket, playerId) {
   for (const [code, room] of rooms) {
     const idx = room.players.findIndex(p => p.id === playerId)
     if (idx !== -1) {
+      const wasOwner = room.ownerId === playerId
       room.removePlayer(playerId)
       socket.leave(code)
       if (room.players.length === 0) {
         rooms.delete(code)
         console.log(`[Room] 房间 ${code} 已删除（无人）`)
+      } else if (wasOwner) {
+        // 房主离开，解散房间，通知剩余玩家回大厅
+        rooms.delete(code)
+        io.to(code).emit('room:disbanded', { message: '房主已离开，房间已解散' })
+        console.log(`[Room] 房间 ${code} 因房主离开而解散`)
       } else {
         io.to(code).emit('room:update', { room: room.getRoomInfo() })
         if (room.status === 'playing') {
@@ -353,16 +359,22 @@ function handleDisconnect(socket, playerId) {
     const p = room.players.find(pl => pl.id === playerId)
     if (p) {
       p.connected = false
+      const wasOwner = room.ownerId === playerId
       if (room.status === 'playing') {
         io.to(code).emit('player:disconnected', { playerId, nickname: p.nickname })
         room.handlePlayerDisconnect(playerId)
       } else {
+        // 等待室：给 30s 重连机会，超时清除
         setTimeout(() => {
           const still = room.players.find(pl => pl.id === playerId)
           if (still && !still.connected) {
             room.removePlayer(playerId)
             if (room.players.length === 0) {
               rooms.delete(code)
+            } else if (wasOwner) {
+              rooms.delete(code)
+              io.to(code).emit('room:disbanded', { message: '房主已断线，房间已解散' })
+              console.log(`[Room] 房间 ${code} 因房主断线而解散`)
             } else {
               io.to(code).emit('room:update', { room: room.getRoomInfo() })
             }
