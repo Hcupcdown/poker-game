@@ -339,12 +339,6 @@ const gameState = ref({
   lastAction: null
 })
 
-// 如果从 store 恢复了状态（刚从 RoomPage 跳转过来），直接用其值（注意用 .value）
-if (store.gameState) {
-  gameState.value = store.gameState
-  triggerDealAnimation()
-}
-
 // ====== 计算属性 ======
 const me = computed(() => gameState.value.players.find(p => p.id === store.player?.id))
 const opponents = computed(() => gameState.value.players.filter(p => p.id !== store.player?.id))
@@ -428,11 +422,16 @@ onMounted(() => {
 
   // 游戏状态更新（行动后广播）
   socket.on('game:state', (state) => {
+    const wasWaiting = gameState.value.phase === 'waiting'
     gameState.value = state
     store.setGameState(state)
+    // 如果是第一次收到真实游戏状态（发牌），触发动画
+    if (wasWaiting && state.phase !== 'waiting') {
+      triggerDealAnimation()
+    }
   })
 
-  // 新一局开始
+  // 游戏开始（发牌）
   socket.on('game:start', ({ gameState: gs }) => {
     gameState.value = gs
     store.setGameState(gs)
@@ -440,15 +439,8 @@ onMounted(() => {
   })
 
   // 玩家行动日志
-  socket.on('player:acted', ({ playerId, type, amount, nickname }) => {
-    const msgs = {
-      fold: `${nickname} 弃牌`,
-      check: `${nickname} 看牌`,
-      call: `${nickname} 跟注 ${amount || ''}`,
-      raise: `${nickname} 加注到 ${amount}`,
-      allin: `${nickname} All In！`
-    }
-    store.addLog(msgs[type] || `${nickname} ${type}`)
+  socket.on('player:action:log', ({ msg }) => {
+    store.addLog(msg)
   })
 
   // 结算
@@ -466,6 +458,32 @@ onMounted(() => {
   socket.on('error', ({ message }) => {
     showToast({ message: message || '出错了', icon: 'fail' })
   })
+
+  // 主动拉取当前游戏状态
+  // 因为 game:start 可能在这个页面挂载之前就发出了，需要主动补一次
+  const doRequestState = () => {
+    socket.emit('game:request_state')
+  }
+
+  if (socket.connected) {
+    // 已连接，先确保 auth，再 join + 拉状态
+    let done = false
+    const tryRequest = () => {
+      if (done) return
+      done = true
+      // 先 join 房间（如果断线重连，后端会推 game:state）
+      socket.emit('room:join', { roomId, player: store.player })
+      // 100ms 后再拉一次，确保 join 处理完
+      setTimeout(doRequestState, 150)
+    }
+    socket.once('player:auth:ok', tryRequest)
+    setTimeout(tryRequest, 400)
+  } else {
+    socket.once('player:auth:ok', () => {
+      socket.emit('room:join', { roomId, player: store.player })
+      setTimeout(doRequestState, 150)
+    })
+  }
 })
 
 onUnmounted(() => {
@@ -473,9 +491,10 @@ onUnmounted(() => {
   const socket = getSocket()
   socket.off('game:state')
   socket.off('game:start')
-  socket.off('player:acted')
+  socket.off('player:action:log')
   socket.off('game:result')
   socket.off('player:disconnected')
+  socket.off('player:auth:ok')
   socket.off('error')
 })
 
