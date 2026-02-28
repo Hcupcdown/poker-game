@@ -300,6 +300,9 @@ class GameRoom {
       playerId
     }
 
+    // 标记该玩家本轮已行动（用于 preflop BB 权利判断）
+    player.hasActed = true
+
     // 日志广播
     const actionDesc = this._getActionDesc(player, type, gs.lastAction.amount)
     this.io.to(this.id).emit('player:action:log', { msg: actionDesc })
@@ -398,36 +401,35 @@ class GameRoom {
    */
   _checkRoundEnd() {
     const gs = this.gameState
-    const activePlayers = gs.players.filter(p => p.status === 'active' || p.status === 'allin')
 
     // 所有人都 fold 了（只剩一个活跃玩家）
     const notFolded = gs.players.filter(p => p.status !== 'folded')
     if (notFolded.length === 1) {
-      // 直接结算，无需摊牌
       this._settleGame(false)
       return
     }
 
-    // 所有活跃玩家都已 all-in，无需行动
+    // 所有活跃玩家都已 all-in，无需继续行动
     const activeOnly = gs.players.filter(p => p.status === 'active')
     if (activeOnly.length === 0) {
-      // 全部 all-in，快速翻完公共牌后结算
       this._dealRemainingCommunityCards()
       return
     }
 
     // 检查本轮行动是否完成：
-    // 所有 active 玩家的 currentBet 相等，且每个人都有机会行动过
+    // 1. 所有 active 玩家下注额相等
+    // 2. 每个 active 玩家都至少行动过一次（hasActed = true）
     const maxBet = Math.max(...gs.players.filter(p => p.status !== 'folded').map(p => p.currentBet))
-    const allCalled = gs.players
+    const allEqualBet = gs.players
       .filter(p => p.status === 'active')
       .every(p => p.currentBet === maxBet)
+    const allHaveActed = gs.players
+      .filter(p => p.status === 'active')
+      .every(p => p.hasActed === true)
 
-    if (allCalled) {
-      // 本轮结束，进入下一阶段
+    if (allEqualBet && allHaveActed) {
       this._advancePhase()
     } else {
-      // 继续，轮到下一个玩家
       this._nextPlayer()
     }
   }
@@ -448,9 +450,12 @@ class GameRoom {
     const nextPhase = phases[currentIdx + 1]
     gs.phase = nextPhase
 
-    // 重置本轮下注（进入新轮）
+    // 重置本轮下注和行动标记（进入新轮）
     gs.players.forEach(p => {
-      if (p.status === 'active') p.currentBet = 0
+      if (p.status === 'active') {
+        p.currentBet = 0
+        p.hasActed = false
+      }
     })
 
     // 翻公共牌
@@ -465,11 +470,9 @@ class GameRoom {
       return
     }
 
-    // 广播游戏状态
-    this._broadcastGameState()
-
-    // 新一轮从庄家左手边第一个 active 玩家开始
+    // 广播游戏状态（先翻牌、重置下注，再设置下一个行动者，最后广播）
     this._setFirstActivePlayerAfterDealer()
+    this._broadcastGameState()
     this._startActionTimer()
   }
 
