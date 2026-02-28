@@ -57,9 +57,18 @@
           <!-- 弃牌遮罩 -->
           <div v-if="p.status === 'folded'" class="fold-mask">弃牌</div>
 
-          <!-- 手牌背面 -->
+          <!-- 手牌（背面，有发牌动画） -->
           <div class="opp-cards">
-            <div v-if="p.status !== 'folded'" class="card-back" v-for="n in 2" :key="n">🂠</div>
+            <template v-if="p.status !== 'folded'">
+              <div
+                v-for="n in 2"
+                :key="n"
+                class="card-back deal-anim"
+                :style="{ animationDelay: (dealAnimKey * 0.1 + (i * 2 + n - 1) * 0.08) + 's' }"
+              >
+                <div class="card-back-inner">🂠</div>
+              </div>
+            </template>
             <div v-if="p.status === 'allin'" class="allin-badge">ALL IN</div>
           </div>
 
@@ -80,12 +89,13 @@
       <!-- 公共牌区域 -->
       <div class="community-area">
         <div class="community-cards">
-          <transition-group name="card-flip">
+          <transition-group name="community-flip" tag="div" class="community-cards-inner">
             <div
               v-for="(card, i) in communityCards"
               :key="i + '-' + card"
               class="community-card"
               :class="{ 'card-red': isRedCard(card) }"
+              :style="{ animationDelay: (i % 3) * 0.12 + 's' }"
             >
               <div class="card-rank">{{ getCardRank(card) }}</div>
               <div class="card-suit">{{ getCardSuit(card) }}</div>
@@ -116,19 +126,36 @@
       <div class="my-cards">
         <div
           v-for="(card, i) in myCards"
-          :key="i"
-          class="my-card"
-          :class="{ 'card-red': isRedCard(card), 'card-highlight': isMyTurn }"
+          :key="i + '-' + card + '-' + dealAnimKey"
+          class="my-card-flip-wrap"
+          :style="{ animationDelay: (dealAnimKey * 0.1 + i * 0.15) + 's' }"
+          :class="{ 'deal-in': true }"
+          @click="toggleCardReveal(i)"
         >
-          <div class="my-card-rank">{{ getCardRank(card) }}</div>
-          <div class="my-card-suit">{{ getCardSuit(card) }}</div>
-          <div class="my-card-corner top-left">
-            <span>{{ getCardRank(card) }}</span>
-            <span>{{ getCardSuit(card) }}</span>
+          <!-- 3D 翻转容器 -->
+          <div class="my-card-3d" :class="{ 'is-revealed': cardRevealed[i] }">
+            <!-- 背面 -->
+            <div class="my-card face-back">
+              <div class="card-back-pattern"></div>
+              <span class="back-icon">🂠</span>
+              <span class="tap-hint">点击看牌</span>
+            </div>
+            <!-- 正面 -->
+            <div
+              class="my-card face-front"
+              :class="{ 'card-red': isRedCard(card), 'card-highlight': isMyTurn }"
+            >
+              <div class="my-card-rank">{{ getCardRank(card) }}</div>
+              <div class="my-card-suit">{{ getCardSuit(card) }}</div>
+              <div class="my-card-corner top-left">
+                <span>{{ getCardRank(card) }}</span>
+                <span>{{ getCardSuit(card) }}</span>
+              </div>
+            </div>
           </div>
         </div>
         <!-- 手牌背面（未开始） -->
-        <div v-if="myCards.length === 0" v-for="n in 2" :key="n" class="my-card back-card">
+        <div v-if="myCards.length === 0" v-for="n in 2" :key="n" class="my-card face-back back-card">
           🂠
         </div>
       </div>
@@ -315,6 +342,7 @@ const gameState = ref({
 // 如果从 store 恢复了状态（刚从 RoomPage 跳转过来），直接用其值（注意用 .value）
 if (store.gameState) {
   gameState.value = store.gameState
+  triggerDealAnimation()
 }
 
 // ====== 计算属性 ======
@@ -379,6 +407,19 @@ function stopTimer() {
   clearInterval(timerInterval)
 }
 
+// ====== 发牌动画 & 翻牌状态 ======
+const dealAnimKey = ref(0)          // 每次发牌时自增，触发重新动画
+const cardRevealed = ref([false, false])   // 我的手牌是否已翻面
+
+function toggleCardReveal(idx) {
+  cardRevealed.value[idx] = !cardRevealed.value[idx]
+}
+
+function triggerDealAnimation() {
+  dealAnimKey.value++
+  cardRevealed.value = [false, false]  // 每轮重置为背面
+}
+
 // ====== Socket 事件 ======
 onMounted(() => {
   if (!store.player) return router.replace('/login')
@@ -395,6 +436,7 @@ onMounted(() => {
   socket.on('game:start', ({ gameState: gs }) => {
     gameState.value = gs
     store.setGameState(gs)
+    triggerDealAnimation()
   })
 
   // 玩家行动日志
@@ -693,10 +735,36 @@ function isRedCard(card) {
   position: relative;
 }
 
+/* ===== 发牌动画（背面飞入） ===== */
 .card-back {
   font-size: 22px;
   line-height: 1;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+
+.deal-anim {
+  animation: dealFlyIn 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+  animation-fill-mode: both;
+}
+
+@keyframes dealFlyIn {
+  from {
+    transform: translate(0, -60px) scale(0.6) rotate(-15deg);
+    opacity: 0;
+  }
+  to {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.card-back-inner {
+  display: inline-block;
+  transition: transform 0.15s;
+}
+
+.card-back.deal-anim:active .card-back-inner {
+  transform: scale(0.92);
 }
 
 .allin-badge {
@@ -779,6 +847,16 @@ function isRedCard(card) {
 .community-cards {
   display: flex;
   gap: 6px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.community-cards-inner {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
 }
 
 .community-card {
@@ -821,14 +899,19 @@ function isRedCard(card) {
   box-shadow: none;
 }
 
-/* 翻牌动画 */
-.card-flip-enter-active {
-  animation: flipIn 0.4s ease;
+/* 公共牌翻入动画 */
+.community-flip-enter-active {
+  animation: communityFlipIn 0.45s ease both;
 }
 
-@keyframes flipIn {
-  from { transform: rotateY(90deg) scale(0.8); opacity: 0; }
-  to { transform: rotateY(0) scale(1); opacity: 1; }
+.community-flip-leave-active {
+  display: none;
+}
+
+@keyframes communityFlipIn {
+  0%   { transform: rotateY(90deg) translateY(-10px) scale(0.8); opacity: 0; }
+  60%  { transform: rotateY(-8deg) translateY(2px) scale(1.05); opacity: 1; }
+  100% { transform: rotateY(0) translateY(0) scale(1); opacity: 1; }
 }
 
 .last-action {
@@ -851,28 +934,108 @@ function isRedCard(card) {
 
 .my-cards {
   display: flex;
-  gap: 10px;
+  gap: 14px;
   justify-content: center;
   margin-bottom: 10px;
 }
 
-.my-card {
-  width: 58px;
-  height: 80px;
-  background: #fff;
+/* ===== 手牌发牌飞入 ===== */
+.my-card-flip-wrap {
+  position: relative;
+  width: 60px;
+  height: 84px;
+  perspective: 600px;
+  cursor: pointer;
+  animation: myCardDealIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+  animation-fill-mode: both;
+}
+
+@keyframes myCardDealIn {
+  from {
+    transform: translate(0, -80px) scale(0.5) rotate(-20deg);
+    opacity: 0;
+  }
+  to {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+/* 3D 翻牌容器 */
+.my-card-3d {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.my-card-3d.is-revealed {
+  transform: rotateY(180deg);
+}
+
+/* 公共的正/背面样式 */
+.face-front,
+.face-back {
+  position: absolute;
+  inset: 0;
   border-radius: 8px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   box-shadow: 0 6px 20px rgba(0,0,0,0.5);
-  position: relative;
-  transition: transform 0.2s;
 }
 
-.my-card.card-highlight {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(245,200,66,0.4);
+/* 背面 */
+.face-back {
+  background: linear-gradient(135deg, #1a3a5c 0%, #0d2137 50%, #1a3a5c 100%);
+  border: 2px solid rgba(255,255,255,0.15);
+  overflow: hidden;
+}
+
+.card-back-pattern {
+  position: absolute;
+  inset: 4px;
+  border-radius: 5px;
+  border: 1.5px solid rgba(255,255,255,0.2);
+  background:
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 4px,
+      rgba(255,255,255,0.04) 4px,
+      rgba(255,255,255,0.04) 8px
+    );
+}
+
+.back-icon {
+  font-size: 36px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+  z-index: 1;
+}
+
+.tap-hint {
+  position: absolute;
+  bottom: 5px;
+  font-size: 9px;
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 0.3px;
+  z-index: 1;
+}
+
+/* 正面 */
+.face-front {
+  background: #fff;
+  transform: rotateY(180deg);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.face-front.card-highlight {
+  transform: rotateY(180deg) translateY(-4px);
+  box-shadow: 0 10px 28px rgba(245,200,66,0.45);
 }
 
 .my-card-rank {
@@ -888,8 +1051,8 @@ function isRedCard(card) {
   line-height: 1;
 }
 
-.my-card.card-red .my-card-rank,
-.my-card.card-red .my-card-suit {
+.face-front.card-red .my-card-rank,
+.face-front.card-red .my-card-suit {
   color: #e74c3c;
 }
 
@@ -905,12 +1068,17 @@ function isRedCard(card) {
   color: inherit;
 }
 
+/* 未开始时的空白背面 */
 .back-card {
+  width: 60px;
+  height: 84px;
   font-size: 40px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #2c3e50, #1a1a2e);
+  background: linear-gradient(135deg, #1a3a5c, #0d2137);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 
 .my-info-bar {
