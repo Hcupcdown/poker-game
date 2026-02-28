@@ -151,9 +151,13 @@ class GameRoom {
    * 开始新一局游戏
    * 被 server.js 的 room:start 事件调用
    */
-  startGame() {
+  startGame({ startChips } = {}) {
     if (this.players.length < 2) throw new Error('至少需要2名玩家')
     this.status = 'playing'
+
+    // 如果指定了初始筹码，覆盖所有玩家筹码
+    const chips = parseInt(startChips) || 1000
+    this.players.forEach(p => { p.chips = chips })
 
     // 初始化牌组
     this.deck = new Deck()

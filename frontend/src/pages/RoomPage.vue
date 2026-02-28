@@ -84,6 +84,21 @@
       <!-- 底部操作 -->
       <div class="room-footer">
         <template v-if="isOwner">
+          <!-- 筹码设置（仅房主可见） -->
+          <div class="chips-setting card-box">
+            <p class="chips-setting-label">初始筹码</p>
+            <div class="chips-options">
+              <div
+                v-for="amount in chipOptions"
+                :key="amount"
+                class="chip-option"
+                :class="{ selected: startChips === amount }"
+                @click="startChips = amount"
+              >
+                {{ amount.toLocaleString() }}
+              </div>
+            </div>
+          </div>
           <p class="start-hint" v-if="players.length < 2">至少需要 2 名玩家才能开始</p>
           <van-button
             block round size="large"
@@ -119,6 +134,8 @@ const store = useGameStore()
 
 const roomId = route.params.id.toUpperCase()
 const starting = ref(false)
+const startChips = ref(1000)
+const chipOptions = [500, 1000, 2000, 5000]
 
 // 房间数据（由 socket 同步）
 const room = reactive({
@@ -206,8 +223,7 @@ function copyCode() {
 function handleStart() {
   if (players.value.length < 2) return
   starting.value = true
-  getSocket().emit('room:start')
-  // 超时兜底
+  getSocket().emit('room:start', { startChips: startChips.value })
   setTimeout(() => { starting.value = false }, 5000)
 }
 
@@ -453,6 +469,43 @@ function handleBack() {
   font-size: 13px;
   text-align: center;
   margin: 0 0 8px;
+}
+
+/* 房主筹码设置 */
+.chips-setting {
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.chips-setting-label {
+  color: rgba(255,255,255,0.55);
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+.chips-options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.chip-option {
+  padding: 8px 0;
+  text-align: center;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(255,255,255,0.06);
+  border: 2px solid transparent;
+  color: rgba(255,255,255,0.7);
+  transition: all 0.2s;
+}
+
+.chip-option.selected {
+  border-color: #f5c842;
+  background: rgba(245,200,66,0.15);
+  color: #f5c842;
 }
 
 .start-btn {

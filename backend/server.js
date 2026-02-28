@@ -219,7 +219,7 @@ io.on('connection', (socket) => {
   //   2. 延迟 600ms（等前端跳转+挂载完成）后再 startGame()
   //   3. startGame() 内 _broadcastGameStart() 推送 game:start 给所有人
   // ----------------------------------------------------------------
-  socket.on('room:start', () => {
+  socket.on('room:start', ({ startChips } = {}) => {
     const playerId = socketToPlayer.get(socket.id)
     if (!playerId) { socket.emit('error', { message: '未认证，请刷新重试' }); return }
 
@@ -244,8 +244,8 @@ io.on('connection', (socket) => {
         return
       }
       try {
-        room.startGame()
-        console.log(`[Game] 房间 ${roomId} 游戏开始`)
+        room.startGame({ startChips })
+        console.log(`[Game] 房间 ${roomId} 游戏开始，初始筹码: ${startChips || '默认'}`)
       } catch (err) {
         console.error(`[Game] 房间 ${roomId} 开始失败: ${err.message}`)
         io.to(roomId).emit('error', { message: err.message })

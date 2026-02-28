@@ -45,22 +45,6 @@
               </div>
             </div>
 
-            <!-- 初始筹码 -->
-            <div class="chips-section">
-              <p class="chips-label">初始筹码</p>
-              <div class="chips-options">
-                <div
-                  v-for="amount in chipOptions"
-                  :key="amount"
-                  class="chip-option"
-                  :class="{ selected: selectedChips === amount }"
-                  @click="selectedChips = amount"
-                >
-                  {{ amount.toLocaleString() }}
-                </div>
-              </div>
-            </div>
-
             <van-button
               type="primary"
               block
@@ -90,16 +74,13 @@ const store = useGameStore()
 
 const nickname = ref('')
 const selectedAvatar = ref('🐼')
-const selectedChips = ref(1000)
 const loading = ref(false)
 const showForm = ref(false)
 
 const avatars = ['🐼', '🦊', '🐯', '🦁', '🐻', '🐸', '🐺', '🦅', '🐉', '👾', '🤠', '😎']
-const chipOptions = [500, 1000, 2000, 5000]
 const bgCards = ['🂡', '🂱', '🃁', '🃑', '🂢', '🂲']
 
 onMounted(() => {
-  // 如果已有 token，直接去大厅
   if (store.token && store.player) {
     router.replace('/lobby')
     return
@@ -114,12 +95,11 @@ function handleLogin() {
   }
   loading.value = true
 
-  // 每次登录都生成全新 id（防止同浏览器多窗口 localStorage 冲突，测试时用无痕/不同浏览器）
   const playerData = {
     id: 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     nickname: nickname.value.trim(),
     avatar: selectedAvatar.value,
-    chips: selectedChips.value,
+    chips: 1000,   // 占位，实际由房主开局时设置
     createdAt: Date.now()
   }
 
@@ -173,7 +153,6 @@ function handleLogin() {
   50% { transform: translateY(-20px) rotate(10deg); }
 }
 
-/* Logo 区域 */
 .login-content {
   width: 100%;
   max-width: 420px;
@@ -212,7 +191,6 @@ function handleLogin() {
   margin: 0;
 }
 
-/* 表单 */
 .login-form {
   padding: 24px 20px 28px;
 }
@@ -239,10 +217,9 @@ function handleLogin() {
   font-size: 16px;
 }
 
-/* 头像 */
-.avatar-section { margin-bottom: 20px; }
+.avatar-section { margin-bottom: 24px; }
 
-.avatar-label, .chips-label {
+.avatar-label {
   color: rgba(255,255,255,0.6);
   font-size: 13px;
   margin: 0 0 10px;
@@ -271,34 +248,6 @@ function handleLogin() {
   border-color: #f5c842;
   background: rgba(245,200,66,0.15);
   transform: scale(1.1);
-}
-
-/* 筹码选择 */
-.chips-section { margin-bottom: 24px; }
-
-.chips-options {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-
-.chip-option {
-  padding: 8px 0;
-  text-align: center;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  background: rgba(255,255,255,0.06);
-  border: 2px solid transparent;
-  color: rgba(255,255,255,0.7);
-  transition: all 0.2s;
-}
-
-.chip-option.selected {
-  border-color: #f5c842;
-  background: rgba(245,200,66,0.15);
-  color: #f5c842;
 }
 
 .login-btn {
