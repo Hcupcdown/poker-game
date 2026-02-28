@@ -6,10 +6,6 @@
       <div class="top-left">
         <span class="phase-badge">{{ PHASE_NAMES[gameState.phase] }}</span>
       </div>
-      <div class="pot-area">
-        <span class="pot-label">底池</span>
-        <span class="pot-value gold">🪙 {{ gameState.pot.toLocaleString() }}</span>
-      </div>
       <div class="top-right">
         <span class="room-code">{{ roomId }}</span>
       </div>
@@ -88,14 +84,23 @@
       <!-- 公共牌区域 + 中央牌堆 -->
       <div class="community-area">
 
-        <!-- 中央牌堆 -->
-        <div class="deck-pile" ref="deckRef">
-          <div v-for="n in 4" :key="n" class="deck-card" :style="{ '--i': n }"></div>
-          <div class="deck-top">
-            <div class="deck-back-pattern"></div>
-            <span class="deck-count">{{ deckCardCount }}</span>
+        <!-- 底池 + 牌堆 横排 -->
+        <div class="center-row">
+          <!-- 底池 -->
+          <div class="pot-display" v-if="gameState.pot > 0">
+            <span class="pot-display-label">底池</span>
+            <span class="pot-display-value">🪙 {{ gameState.pot.toLocaleString() }}</span>
           </div>
-        </div>
+
+          <!-- 中央牌堆 -->
+          <div class="deck-pile" ref="deckRef">
+            <div v-for="n in 4" :key="n" class="deck-card" :style="{ '--i': n }"></div>
+            <div class="deck-top">
+              <div class="deck-back-pattern"></div>
+              <span class="deck-count">{{ deckCardCount }}</span>
+            </div>
+          </div>
+        </div><!-- /center-row -->
 
         <div class="community-cards">
           <div class="community-cards-inner">
@@ -138,7 +143,16 @@
         </div>
       </div>
 
-    </div>
+    </div><!-- /table-area -->
+
+    <!-- ===== 行动 Toast ===== -->
+    <transition name="action-toast-trans">
+      <div v-if="actionToast" class="action-toast" :class="'toast-' + actionToast.type">
+        <span class="toast-name">{{ actionToast.name }}</span>
+        <span class="toast-verb">{{ ACTION_NAMES[actionToast.type] || actionToast.type }}</span>
+        <span v-if="actionToast.amount > 0" class="toast-amount">🪙 {{ actionToast.amount.toLocaleString() }}</span>
+      </div>
+    </transition>
 
     <!-- 飞行牌层（Teleport 到 body，全屏绝对定位） -->
     <teleport to="body">
@@ -387,6 +401,16 @@ const myChips = computed(() => me.value?.chips || 0)
 const myCurrentBet = computed(() => me.value?.currentBet || 0)
 const communityCards = computed(() => gameState.value.communityCards || [])
 const lastAction = computed(() => gameState.value.lastAction)
+
+// ===== 行动 Toast =====
+const actionToast = ref(null)
+let toastTimer = null
+watch(lastAction, (val) => {
+  if (!val) return
+  if (toastTimer) clearTimeout(toastTimer)
+  actionToast.value = val
+  toastTimer = setTimeout(() => { actionToast.value = null }, 2000)
+})
 
 const isMyTurn = computed(() => gameState.value.currentPlayerId === store.player?.id)
 
@@ -838,6 +862,38 @@ function isRedCard(card) {
   letter-spacing: 1px;
 }
 
+/* ===== 底池（中央牌堆旁） ===== */
+.center-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.pot-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(245,200,66,0.3);
+  border-radius: 10px;
+  padding: 5px 12px;
+  min-width: 70px;
+}
+
+.pot-display-label {
+  font-size: 9px;
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.pot-display-value {
+  font-size: 17px;
+  font-weight: 800;
+  color: #f5c842;
+  letter-spacing: 0.5px;
+}
+
 .room-code {
   color: rgba(255,255,255,0.35);
   font-size: 11px;
@@ -975,14 +1031,81 @@ function isRedCard(card) {
 .opp-bet {
   display: flex;
   align-items: center;
-  gap: 2px;
-  background: rgba(0,0,0,0.5);
+  gap: 3px;
+  background: rgba(0,0,0,0.65);
+  border: 1px solid rgba(245,200,66,0.4);
   border-radius: 10px;
-  padding: 2px 6px;
+  padding: 2px 8px;
+  margin-top: 2px;
 }
 
-.bet-chip { font-size: 11px; }
-.bet-amount { color: #f5c842; font-size: 11px; font-weight: 700; }
+.bet-chip { font-size: 12px; }
+.bet-amount { color: #f5c842; font-size: 12px; font-weight: 800; }
+
+/* ===== 行动 Toast ===== */
+.action-toast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 8000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: rgba(10, 20, 40, 0.88);
+  border-radius: 16px;
+  padding: 14px 28px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  pointer-events: none;
+  border: 1.5px solid rgba(255,255,255,0.12);
+  min-width: 140px;
+  text-align: center;
+}
+
+.toast-name {
+  font-size: 13px;
+  color: rgba(255,255,255,0.7);
+  font-weight: 500;
+}
+
+.toast-verb {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #fff;
+}
+
+.toast-amount {
+  font-size: 20px;
+  font-weight: 800;
+  color: #f5c842;
+}
+
+/* 颜色区分行动类型 */
+.toast-call .toast-verb  { color: #4fc3f7; }
+.toast-raise .toast-verb { color: #81c784; }
+.toast-fold .toast-verb  { color: rgba(255,255,255,0.45); }
+.toast-check .toast-verb { color: #ce93d8; }
+.toast-allin .toast-verb { color: #ff7043; }
+
+/* 进出动画 */
+.action-toast-trans-enter-active {
+  animation: toastIn 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.action-toast-trans-leave-active {
+  animation: toastOut 0.22s ease-in both;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes toastOut {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to   { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+}
 
 .opp-cards {
   display: flex;
@@ -1560,19 +1683,24 @@ function isRedCard(card) {
 }
 
 .my-bet-area {
-  margin-left: auto;
-  text-align: right;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(245,200,66,0.35);
+  border-radius: 10px;
+  padding: 3px 10px;
 }
 
 .my-bet-label {
-  color: rgba(255,255,255,0.45);
+  color: rgba(255,255,255,0.5);
   font-size: 11px;
-  display: block;
 }
 
 .my-bet-val {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 800;
+  color: #f5c842;
 }
 
 .my-timer {
