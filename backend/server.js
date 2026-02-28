@@ -305,9 +305,14 @@ io.on('connection', (socket) => {
    */
   socket.on('room:start', () => {
     const playerId = socketToPlayer.get(socket.id)
-    if (!playerId) return
+    console.log(`[Start] socketId=${socket.id}, playerId=${playerId}`)
+    if (!playerId) {
+      socket.emit('error', { message: '未认证，请刷新重试' })
+      return
+    }
 
     const room = findPlayerRoom(playerId)
+    console.log(`[Start] findRoom=${room?.id}, ownerId=${room?.ownerId}, players=${room?.players.map(p=>p.id).join(',')}`)
     if (!room) {
       socket.emit('error', { message: '未在任何房间' })
       return
