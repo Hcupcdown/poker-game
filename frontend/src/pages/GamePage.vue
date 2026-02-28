@@ -64,7 +64,7 @@
                 v-for="n in 2"
                 :key="n"
                 class="card-back"
-                v-show="cardsVisible"
+                :style="{ visibility: oppCardsVisible ? 'visible' : 'hidden' }"
               >
                 <div class="card-back-inner">🂠</div>
               </div>
@@ -164,14 +164,14 @@
     <div class="my-area">
       <!-- 我的手牌 -->
       <div class="my-cards">
-        <template v-if="cardsVisible">
+        <!-- 我的手牌（始终渲染 wrap 以便发牌动画定位；cardsVisible 控制内容显隐） -->
         <div
-          v-for="(card, i) in myCards"
-          :key="i + '-' + card + '-' + dealAnimKey"
+          v-for="(card, i) in (myCards.length ? myCards : ['', ''])"
+          :key="i + '-' + (myCards[i] || 'ph') + '-' + dealAnimKey"
           class="my-card-flip-wrap"
-          :style="{ animationDelay: (i * 0.15) + 's' }"
-          :class="{ 'deal-in': true }"
-          @click="toggleCardReveal(i)"
+          :style="{ animationDelay: (i * 0.15) + 's', visibility: cardsVisible && myCards.length ? 'visible' : 'hidden' }"
+          :class="{ 'deal-in': cardsVisible && myCards.length }"
+          @click="myCards.length && cardsVisible && toggleCardReveal(i)"
         >
           <!-- 3D 翻转容器 -->
           <div class="my-card-3d" :class="{ 'is-revealed': cardRevealed[i] }">
@@ -195,11 +195,10 @@
             </div>
           </div>
         </div>
+        <!-- 发牌动画飞行期间的背面占位（可见，作为"手牌落点"的视觉提示） -->
+        <template v-if="!cardsVisible || !myCards.length">
+          <div v-for="n in 2" :key="'ph'+n" class="my-card-placeholder"></div>
         </template>
-        <!-- 手牌背面（未开始 或 发牌动画中） -->
-        <div v-if="myCards.length === 0 || !cardsVisible" v-for="n in 2" :key="'ph'+n" class="my-card face-back back-card">
-          🂠
-        </div>
       </div>
 
       <!-- 我的信息栏 -->
@@ -478,6 +477,7 @@ const flyingCards = ref([])                   // 飞行牌列表
 const cardRevealed = ref([false, false])       // 我的手牌翻面状态
 const dealAnimKey = ref(0)                    // 手牌动画 key（触发 CSS animation 重播）
 const cardsVisible = ref(true)                // 是否显示真实手牌（发牌动画期间隐藏）
+const oppCardsVisible = ref(true)             // 对手背面牌是否可见（发牌动画期间隐藏，飞完后显示）
 const deckCardCount = computed(() => {
   // 52 - 已发手牌 - 公共牌
   const players = gameState.value.players || []
@@ -500,6 +500,7 @@ async function triggerDealAnimation() {
   dealAnimKey.value++
   cardRevealed.value = [false, false]
   cardsVisible.value = false          // 先隐藏真实手牌槽
+  oppCardsVisible.value = false       // 隐藏对手背面牌（飞行途中不穿帮）
 
   // 重置公共牌 slots（5张背面占位，发牌动画飞完后才显示）
   communitySlots.value = []
@@ -625,10 +626,11 @@ async function triggerDealAnimation() {
     flyingCards.value.forEach(fc => { fc.flying = true })
   })
 
-  // 手牌动画完成后显示真实手牌槽
+  // 手牌动画完成后显示真实手牌槽和对手背面牌
   const handDuration = (handCount * 0.08 + 0.42) * 1000
   setTimeout(() => {
     cardsVisible.value = true
+    oppCardsVisible.value = true
   }, handDuration)
 
   // 公共牌飞行完成后，在 communitySlots 里建5个背面占位
@@ -1356,6 +1358,13 @@ function isRedCard(card) {
 }
 
 /* ===== 手牌发牌飞入 ===== */
+.my-card-placeholder {
+  width: 60px;
+  height: 84px;
+  flex-shrink: 0;
+  /* 透明占位：让 .my-card-flip-wrap 始终有真实位置，飞行牌能正确定位 */
+}
+
 .my-card-flip-wrap {
   position: relative;
   width: 60px;
