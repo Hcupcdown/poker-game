@@ -1,0 +1,427 @@
+<template>
+  <div class="lobby-page page-scroll">
+    <div class="lobby-container">
+      <!-- 顶部用户信息 -->
+      <div class="user-bar card-box">
+        <div class="user-info">
+          <span class="user-avatar">{{ store.player?.avatar }}</span>
+          <div class="user-text">
+            <span class="user-name">{{ store.player?.nickname }}</span>
+            <span class="user-chips">💰 {{ store.player?.chips?.toLocaleString() }}</span>
+          </div>
+        </div>
+        <van-button size="mini" class="btn-gray logout-btn" @click="handleLogout">退出</van-button>
+      </div>
+
+      <!-- 标题 -->
+      <div class="lobby-title">
+        <span class="title-icon">🃏</span>
+        <h2>游戏大厅</h2>
+      </div>
+
+      <!-- 创建房间 -->
+      <div class="action-card card-box">
+        <h3 class="action-title">🏠 创建新房间</h3>
+        <p class="action-desc">创建一个房间，邀请朋友加入</p>
+
+        <div class="blind-settings">
+          <div class="blind-row">
+            <span class="blind-label">小盲注</span>
+            <div class="blind-options">
+              <span
+                v-for="v in blindOptions"
+                :key="v"
+                class="blind-opt"
+                :class="{ active: createForm.smallBlind === v }"
+                @click="createForm.smallBlind = v; createForm.bigBlind = v * 2"
+              >{{ v }}</span>
+            </div>
+          </div>
+          <div class="blind-row">
+            <span class="blind-label">大盲注</span>
+            <span class="blind-value gold">{{ createForm.bigBlind }}</span>
+          </div>
+          <div class="blind-row">
+            <span class="blind-label">人数上限</span>
+            <div class="blind-options">
+              <span
+                v-for="n in [4, 6, 8, 9]"
+                :key="n"
+                class="blind-opt"
+                :class="{ active: createForm.maxPlayers === n }"
+                @click="createForm.maxPlayers = n"
+              >{{ n }}人</span>
+            </div>
+          </div>
+        </div>
+
+        <van-button
+          block round size="large"
+          class="btn-green action-btn"
+          :loading="creating"
+          @click="handleCreate"
+        >
+          创建房间
+        </van-button>
+      </div>
+
+      <!-- 分隔线 -->
+      <div class="divider">
+        <span>或</span>
+      </div>
+
+      <!-- 加入房间 -->
+      <div class="action-card card-box">
+        <h3 class="action-title">🔗 加入房间</h3>
+        <p class="action-desc">输入朋友分享的 6 位房间码</p>
+
+        <van-field
+          v-model="joinCode"
+          placeholder="输入房间码（如 AB1234）"
+          clearable
+          :maxlength="6"
+          class="code-input"
+          style="text-transform: uppercase;"
+          @input="joinCode = joinCode.toUpperCase()"
+          @keyup.enter="handleJoin"
+        />
+
+        <van-button
+          block round size="large"
+          class="btn-gray action-btn"
+          :loading="joining"
+          @click="handleJoin"
+        >
+          加入房间
+        </van-button>
+      </div>
+
+      <!-- 最近房间记录 -->
+      <div v-if="recentRooms.length > 0" class="recent-rooms card-box">
+        <h3 class="action-title">⏱ 最近加入</h3>
+        <div
+          v-for="r in recentRooms"
+          :key="r.id"
+          class="recent-item"
+          @click="rejoinRoom(r)"
+        >
+          <span class="recent-icon">🃏</span>
+          <div class="recent-info">
+            <span class="recent-code">房间 {{ r.id }}</span>
+            <span class="recent-time">{{ formatTime(r.joinedAt) }}</span>
+          </div>
+          <van-icon name="arrow" color="rgba(255,255,255,0.4)" />
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useGameStore } from '../stores/gameStore'
+import { showToast, showLoadingToast, closeToast } from 'vant'
+
+const router = useRouter()
+const store = useGameStore()
+
+const joinCode = ref('')
+const creating = ref(false)
+const joining = ref(false)
+const blindOptions = [5, 10, 25, 50]
+const recentRooms = ref([])
+
+const createForm = reactive({
+  smallBlind: 10,
+  bigBlind: 20,
+  maxPlayers: 6
+})
+
+onMounted(() => {
+  const saved = localStorage.getItem('poker_recent_rooms')
+  if (saved) recentRooms.value = JSON.parse(saved)
+})
+
+function handleCreate() {
+  creating.value = true
+  // 生成 6 位房间码
+  const roomId = Math.random().toString(36).slice(2, 8).toUpperCase()
+  const room = {
+    id: roomId,
+    ownerId: store.player.id,
+    ownerName: store.player.nickname,
+    players: [store.player],
+    maxPlayers: createForm.maxPlayers,
+    smallBlind: createForm.smallBlind,
+    bigBlind: createForm.bigBlind,
+    status: 'waiting',
+    createdAt: Date.now()
+  }
+  store.setRoom(room)
+  saveRecentRoom(roomId)
+
+  setTimeout(() => {
+    creating.value = false
+    router.push(`/room/${roomId}`)
+  }, 500)
+}
+
+function handleJoin() {
+  if (!joinCode.value || joinCode.value.length < 4) {
+    showToast('请输入正确的房间码')
+    return
+  }
+  joining.value = true
+  saveRecentRoom(joinCode.value)
+  setTimeout(() => {
+    joining.value = false
+    router.push(`/room/${joinCode.value}`)
+  }, 500)
+}
+
+function rejoinRoom(r) {
+  router.push(`/room/${r.id}`)
+}
+
+function saveRecentRoom(id) {
+  const rooms = recentRooms.value.filter(r => r.id !== id)
+  rooms.unshift({ id, joinedAt: Date.now() })
+  recentRooms.value = rooms.slice(0, 3)
+  localStorage.setItem('poker_recent_rooms', JSON.stringify(recentRooms.value))
+}
+
+function formatTime(ts) {
+  const d = new Date(ts)
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
+
+function handleLogout() {
+  store.logout()
+  router.replace('/login')
+}
+</script>
+
+<style scoped>
+.lobby-page {
+  background: linear-gradient(160deg, #0d1b2a 0%, #1a1a2e 50%, #16213e 100%);
+  min-height: 100dvh;
+}
+
+.lobby-container {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px 16px 40px;
+}
+
+/* 用户栏 */
+.user-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-avatar {
+  font-size: 32px;
+}
+
+.user-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-name {
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.user-chips {
+  color: #f5c842;
+  font-size: 13px;
+}
+
+.logout-btn {
+  height: 30px !important;
+  padding: 0 14px !important;
+  font-size: 12px !important;
+}
+
+/* 标题 */
+.lobby-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.title-icon {
+  font-size: 28px;
+}
+
+.lobby-title h2 {
+  color: #fff;
+  font-size: 22px;
+  font-weight: 800;
+  margin: 0;
+}
+
+/* 操作卡片 */
+.action-card {
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.action-title {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+
+.action-desc {
+  color: rgba(255,255,255,0.45);
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+
+.action-btn {
+  height: 48px !important;
+  font-size: 15px !important;
+}
+
+/* 盲注设置 */
+.blind-settings {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.blind-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.blind-label {
+  color: rgba(255,255,255,0.55);
+  font-size: 13px;
+  width: 50px;
+  flex-shrink: 0;
+}
+
+.blind-value {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.blind-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.blind-opt {
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.6);
+  font-size: 13px;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: all 0.2s;
+}
+
+.blind-opt.active {
+  border-color: #f5c842;
+  background: rgba(245,200,66,0.15);
+  color: #f5c842;
+  font-weight: 600;
+}
+
+/* 房间码输入 */
+.code-input {
+  background: rgba(255,255,255,0.08) !important;
+  border-radius: 12px !important;
+  margin-bottom: 16px;
+  border: 1px solid rgba(255,255,255,0.15) !important;
+  --van-field-input-text-color: #fff;
+  --van-field-placeholder-text-color: rgba(255,255,255,0.35);
+  letter-spacing: 4px;
+  font-size: 18px;
+}
+
+:deep(.van-field__control) {
+  color: #fff !important;
+  font-size: 18px;
+  letter-spacing: 4px;
+  text-align: center;
+}
+
+/* 分隔线 */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 16px;
+  color: rgba(255,255,255,0.25);
+  font-size: 13px;
+}
+
+.divider::before, .divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255,255,255,0.12);
+}
+
+/* 最近房间 */
+.recent-rooms {
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  cursor: pointer;
+}
+
+.recent-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.recent-icon {
+  font-size: 20px;
+}
+
+.recent-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.recent-code {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.recent-time {
+  color: rgba(255,255,255,0.4);
+  font-size: 12px;
+}
+</style>
