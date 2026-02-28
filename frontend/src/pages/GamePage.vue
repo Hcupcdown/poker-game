@@ -169,7 +169,7 @@
           :key="i + '-' + (myCards[i] || 'ph') + '-' + dealAnimKey"
           class="my-card-flip-wrap"
           :style="{ animationDelay: (i * 0.15) + 's', visibility: cardsVisible && myCards.length ? 'visible' : 'hidden' }"
-          :class="{ 'deal-in': false }"
+          :class="{ 'cards-fade-in': cardsVisible && myCards.length }"
           @click="myCards.length && cardsVisible && toggleCardReveal(i)"
         >
           <!-- 3D 翻转容器 -->
@@ -540,7 +540,7 @@ async function triggerDealAnimation() {
   const commDeals = [0, 1, 2, 3, 4].map(i => ({ type: 'comm', cardIndex: i }))
 
   // ---- 飞行牌目标位置计算 ----
-  const cardW = 36, cardH = 50
+  const cardW = 60, cardH = 84
 
   function getDeckOrigin() {
     return {
@@ -1052,46 +1052,65 @@ function isRedCard(card) {
 /* ===== 飞行牌（全屏绝对定位） ===== */
 .flying-card {
   position: fixed;
-  width: 36px;
-  height: 50px;
+  width: 60px;
+  height: 84px;
   z-index: 9999;
   pointer-events: none;
-  /* 初始状态：在牌堆上方 */
   transform: rotate(0deg);
   transition: none;
 }
 
 .flying-card-go {
-  /* 飞行时触发 transition */
-  transform: translate(var(--dx), var(--dy)) rotate(var(--rot, 5deg));
+  transform: translate(var(--dx), var(--dy)) rotate(0deg);
   transition:
     transform 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94) var(--delay),
-    opacity 0.1s ease calc(0.36s + var(--delay));
+    opacity 0.12s ease calc(0.35s + var(--delay));
 }
 
 /* 对手牌：飞到头像位置后缩小消失 */
 .flying-card-go.flying-card-opp {
-  transform: translate(var(--dx), var(--dy)) rotate(var(--rot, 5deg)) scale(0);
+  transform: translate(var(--dx), var(--dy)) rotate(var(--rot, 8deg)) scale(0);
   transition:
-    transform 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94) var(--delay),
-    opacity 0.15s ease calc(0.38s + var(--delay));
+    transform 0.40s cubic-bezier(0.25, 0.46, 0.45, 0.94) var(--delay),
+    opacity 0.15s ease calc(0.36s + var(--delay));
 }
 
 .flying-card-back {
   width: 100%;
   height: 100%;
+  border-radius: 8px;
+  border: 2px solid rgba(255,255,255,0.15);
   background: linear-gradient(135deg, #1a3a5c 0%, #0d2137 50%, #1a3a5c 100%);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 内框纹（和 .face-back 一致） */
+.flying-card-back::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
   border-radius: 5px;
-  border: 1.5px solid rgba(255,255,255,0.25);
-  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
-  background-image:
+  border: 1.5px solid rgba(255,255,255,0.2);
+  background:
     repeating-linear-gradient(
       45deg,
       transparent,
-      transparent 3px,
-      rgba(255,255,255,0.05) 3px,
-      rgba(255,255,255,0.05) 6px
+      transparent 4px,
+      rgba(255,255,255,0.04) 4px,
+      rgba(255,255,255,0.04) 8px
     );
+}
+
+.flying-card-back::after {
+  content: '🂠';
+  font-size: 36px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+  z-index: 1;
 }
 
 
@@ -1379,20 +1398,17 @@ function isRedCard(card) {
   height: 84px;
   perspective: 600px;
   cursor: pointer;
-  animation: myCardDealIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
-  animation-fill-mode: both;
 }
 
-@keyframes myCardDealIn {
-  from {
-    transform: translate(0, -80px) scale(0.5) rotate(-20deg);
-    opacity: 0;
-  }
-  to {
-    transform: translate(0, 0) scale(1) rotate(0deg);
-    opacity: 1;
-  }
+.cards-fade-in {
+  animation: cardsFadeIn 0.18s ease both;
 }
+
+@keyframes cardsFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 
 /* 3D 翻牌容器 */
 .my-card-3d {
