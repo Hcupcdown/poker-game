@@ -144,7 +144,7 @@
           <!-- 底池 -->
           <div class="pot-display" v-if="gameState.pot > 0">
             <span class="pot-display-label">底池</span>
-<span class="pot-display-value"><img src="/chip.png" class="chip-icon" />{{ gameState.pot.toLocaleString() }}</span>
+            <span class="pot-display-value"><img src="/chip.png" class="chip-icon" />{{ gameState.pot.toLocaleString() }}</span>
           </div>
 
           <!-- 中央牌堆 -->
@@ -372,7 +372,7 @@
           >
             <!-- 筹码图标 -->
             <div class="chip-token">
-              <img :src="'/svg/' + chip.value + '.svg'" class="chip-svg" :alt="chip.value" />
+              <span class="chip-denomination">{{ chip.value }}</span>
             </div>
             <!-- 滚轮选择器 -->
             <van-picker
@@ -1294,6 +1294,7 @@ function isRedCard(card) {
 .center-row {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 14px;
 }
 
@@ -1301,6 +1302,7 @@ function isRedCard(card) {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   background: rgba(0,0,0,0.45);
   border: 1px solid rgba(245,200,66,0.3);
   border-radius: 10px;
@@ -1320,6 +1322,10 @@ function isRedCard(card) {
   font-weight: 800;
   color: #f5c842;
   letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .room-code {
@@ -1524,8 +1530,8 @@ function isRedCard(card) {
 }
 
 .chip-icon-lg {
-  width: 22px;
-  height: 22px;
+  width: 32px;
+  height: 32px;
 }
 
 /* ===== 行动 Toast ===== */
@@ -2343,13 +2349,18 @@ function isRedCard(card) {
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f5c842 0%, #e6a817 100%);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.3);
+  border: 3px solid rgba(255,255,255,0.25);
 }
 
-.chip-svg {
-  width: 56px;
-  height: 56px;
+.chip-denomination {
+  font-size: 18px;
+  font-weight: 900;
+  color: #1a1a2e;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.2);
   pointer-events: none;
-  filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4));
 }
 
 /* 滚轮选择器样式覆盖 */
