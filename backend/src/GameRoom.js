@@ -150,14 +150,31 @@ class GameRoom {
   /**
    * 开始新一局游戏
    * 被 server.js 的 room:start 事件调用
+   * @param {object} opts
+   * @param {number} [opts.startChips]  首局初始筹码（续局时忽略，保留当前筹码）
+   * @param {boolean} [opts.resetChips] 强制重置筹码（首局使用）
    */
-  startGame({ startChips } = {}) {
+  startGame({ startChips, resetChips } = {}) {
     if (this.players.length < 2) throw new Error('至少需要2名玩家')
     this.status = 'playing'
 
-    // 如果指定了初始筹码，覆盖所有玩家筹码
-    const chips = parseInt(startChips) || 1000
-    this.players.forEach(p => { p.chips = chips })
+    // 首局或强制重置时才覆盖筹码；续局保留上一局结束后的筹码
+    if (resetChips || !this._gameStarted) {
+      const chips = parseInt(startChips) || 1000
+      this.players.forEach(p => { p.chips = chips })
+    }
+    this._gameStarted = true
+
+    // 筹码为 0 的玩家踢出（破产）
+    const bustedPlayers = this.players.filter(p => p.chips <= 0)
+    bustedPlayers.forEach(p => {
+      this.removePlayer(p.id)
+      const s = this.io.sockets.sockets.get(p.socketId)
+      if (s) s.emit('player:bust', { message: '你的筹码已耗尽，已退出游戏' })
+    })
+    if (bustedPlayers.length > 0) {
+      this.io.to(this.id).emit('room:update', { room: this.getRoomInfo() })
+    }
 
     // 初始化牌组
     this.deck = new Deck()
@@ -633,7 +650,15 @@ class GameRoom {
         gain: gain
       } : null,
       winners,
-      allHands: results,
+      allHands: results.map(r => {
+        const gp = gs.players.find(p => p.id === r.id)
+        const rp = this.players.find(p => p.id === r.id)
+        const chipsAfter = rp ? rp.chips : 0
+        // totalBet 是本局投入底池的总额
+        const invested = gp ? gp.totalBet || 0 : 0
+        const chipsChange = r.isWinner ? (gain - invested) : -invested
+        return { ...r, chipsChange, chipsAfter }
+      }),
       pot: totalPot,
       communityCards: gs.communityCards
     }

@@ -311,6 +311,7 @@
       v-model:show="showResult"
       round
       position="center"
+      :close-on-click-overlay="false"
       :style="{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.15)', width: '90%' }"
     >
       <div class="result-popup">
@@ -340,9 +341,29 @@
             <span class="hand-type" :class="{ gold: p.isWinner }">{{ p.handName }}</span>
           </div>
         </div>
-        <van-button block round class="btn-green" style="margin-top: 20px;" @click="nextRound">
-          下一局
+
+        <!-- 筹码变化 -->
+        <div class="chips-change" v-if="roundResult.allHands">
+          <div v-for="p in roundResult.allHands" :key="'chips-'+p.id" class="chips-row">
+            <span>{{ p.avatar }} {{ p.nickname }}</span>
+            <span :class="p.chipsChange >= 0 ? 'gold' : 'red-text'">
+              {{ p.chipsChange >= 0 ? '+' : '' }}{{ p.chipsChange }} → {{ p.chipsAfter }}
+            </span>
+          </div>
+        </div>
+
+        <!-- 下一局按钮 + 等待进度 -->
+        <van-button
+          block round class="btn-green"
+          style="margin-top: 16px;"
+          :disabled="nextRoundSent"
+          @click="nextRound"
+        >
+          {{ nextRoundSent ? `等待其他玩家… (${nextRoundReady}/${nextRoundTotal})` : '下一局 ▶' }}
         </van-button>
+        <div v-if="nextRoundSent" class="ready-hint">
+          {{ nextRoundReady }}/{{ nextRoundTotal }} 人已准备
+        </div>
       </div>
     </van-popup>
 
@@ -707,18 +728,41 @@ onMounted(() => {
   socket.on('game:result', (result) => {
     roundResult.value = result
     showResult.value = true
+    nextRoundSent.value = false
+    nextRoundReady.value = 0
+    nextRoundTotal.value = result.allHands?.length || 0
     store.setGameState(null)
 
-    // 兜底：30秒后若仍在结算弹窗（没人点"下一局"），自动跳回房间
+    // 兜底：60秒后无人操作自动触发下一局
+    clearTimeout(autoBackTimer)
     autoBackTimer = setTimeout(() => {
-      if (showResult.value) {
-        showResult.value = false
-        router.replace(`/room/${roomId}`)
+      if (showResult.value && !nextRoundSent.value) {
+        nextRound()
       }
-    }, 30000)
+    }, 60000)
   })
 
-  // 所有玩家回房间（任意一人点"下一局"即触发）
+  // 等待进度更新
+  socket.on('game:next_round_ready', ({ ready, total }) => {
+    nextRoundReady.value = ready
+    nextRoundTotal.value = total
+  })
+
+  // 新一局开始（所有人就绪后后端直接发 game:start）
+  socket.on('game:start', (data) => {
+    clearTimeout(autoBackTimer)
+    showResult.value = false
+    nextRoundSent.value = false
+    store.setGameState(data.gameState)
+  })
+
+  // 破产踢出
+  socket.on('player:bust', ({ message }) => {
+    showToast({ message: message || '筹码耗尽，已退出游戏', icon: 'fail', duration: 3000 })
+    router.replace('/lobby')
+  })
+
+  // 所有玩家回房间（room:back 保留兼容）
   socket.on('room:back', ({ roomId: rid }) => {
     clearTimeout(autoBackTimer)
     showResult.value = false
@@ -769,7 +813,9 @@ onUnmounted(() => {
   socket.off('game:start')
   socket.off('player:action:log')
   socket.off('game:result')
+  socket.off('game:next_round_ready')
   socket.off('room:back')
+  socket.off('player:bust')
   socket.off('player:disconnected')
   socket.off('player:auth:ok')
   socket.off('error')
@@ -804,12 +850,15 @@ function doAction(type, amount) {
 // ====== 结算 ======
 const showResult = ref(false)
 const roundResult = ref(null)
+const nextRoundSent = ref(false)
+const nextRoundReady = ref(0)
+const nextRoundTotal = ref(0)
 let autoBackTimer = null
 
 function nextRound() {
-  showResult.value = false
+  if (nextRoundSent.value) return
+  nextRoundSent.value = true
   getSocket().emit('game:next_round')
-  router.push(`/room/${roomId}`)
 }
 
 // ====== 牌面显示工具 ======
@@ -1954,6 +2003,33 @@ function isRedCard(card) {
   color: rgba(255,255,255,0.5);
   text-align: right;
   flex-shrink: 0;
+}
+
+.chips-change {
+  margin-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chips-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: rgba(255,255,255,0.75);
+}
+
+.red-text {
+  color: #e74c3c;
+}
+
+.ready-hint {
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255,255,255,0.45);
+  margin-top: 8px;
 }
 
 /* ===== 操作日志 ===== */

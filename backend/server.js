@@ -257,7 +257,7 @@ io.on('connection', (socket) => {
         return
       }
       try {
-        room.startGame({ startChips })
+        room.startGame({ startChips, resetChips: true })
         console.log(`[Game] 房间 ${roomId} 游戏开始，初始筹码: ${startChips || '默认'}`)
       } catch (err) {
         console.error(`[Game] 房间 ${roomId} 开始失败: ${err.message}`)
@@ -311,7 +311,7 @@ io.on('connection', (socket) => {
   })
 
   // ----------------------------------------------------------------
-  // game:next_round — 下一局
+  // game:next_round — 下一局（全员确认后直接开新局，不回房间）
   // ----------------------------------------------------------------
   socket.on('game:next_round', () => {
     const playerId = socketToPlayer.get(socket.id)
@@ -319,13 +319,33 @@ io.on('connection', (socket) => {
 
     const room = findPlayerRoom(playerId)
     if (!room) return
+    if (room.status !== 'finished') return
 
-    if (room.status === 'finished' || room.status === 'waiting') {
-      room.resetToWaiting()
-      // 广播 room:update + room:back，通知所有玩家回到房间页
-      const roomInfo = room.getRoomInfo()
-      io.to(room.id).emit('room:update', { room: roomInfo })
-      io.to(room.id).emit('room:back', { roomId: room.id })
+    // 记录已确认的玩家
+    if (!room.nextRoundReady) room.nextRoundReady = new Set()
+    room.nextRoundReady.add(playerId)
+
+    const connectedPlayers = room.players.filter(p => p.connected !== false)
+    const total = connectedPlayers.length
+    const ready = room.nextRoundReady.size
+
+    // 广播等待进度
+    io.to(room.id).emit('game:next_round_ready', {
+      ready,
+      total,
+      readyIds: [...room.nextRoundReady]
+    })
+
+    // 全员就绪，直接开新一局
+    if (ready >= total) {
+      room.nextRoundReady = null
+      try {
+        room.startGame()
+        console.log(`[Game] 房间 ${room.id} 开始新一局`)
+      } catch (err) {
+        console.error(`[Game] 开始新一局失败: ${err.message}`)
+        io.to(room.id).emit('error', { message: err.message })
+      }
     }
   })
 
