@@ -311,6 +311,43 @@ io.on('connection', (socket) => {
   })
 
   // ----------------------------------------------------------------
+  // game:end — 房主强制结束游戏，广播最终筹码排名
+  // ----------------------------------------------------------------
+  socket.on('game:end', () => {
+    const playerId = socketToPlayer.get(socket.id)
+    if (!playerId) return
+
+    const room = findPlayerRoom(playerId)
+    if (!room) return
+    if (room.ownerId !== playerId) {
+      socket.emit('error', { message: '只有房主可以结束游戏' })
+      return
+    }
+
+    // 收集所有玩家最终筹码（game 内取 gameState，否则取 room.players）
+    const gs = room.gameState
+    const finalPlayers = room.players.map(p => {
+      const gp = gs ? gs.players.find(gpl => gpl.id === p.id) : null
+      return {
+        id: p.id,
+        nickname: p.nickname,
+        avatar: p.avatar,
+        chips: gp ? gp.chips : p.chips
+      }
+    }).sort((a, b) => b.chips - a.chips)
+
+    room.clearActionTimer && room.clearActionTimer()
+    room.status = 'waiting'
+    room.gameState = null
+    room._gameStarted = false
+    room.nextRoundReady = null
+
+    io.to(room.id).emit('game:final_result', { players: finalPlayers })
+    io.to(room.id).emit('room:update', { room: room.getRoomInfo() })
+    console.log(`[Game] 房间 ${room.id} 被房主强制结束`)
+  })
+
+  // ----------------------------------------------------------------
   // game:next_round — 下一局（全员确认后直接开新局，不回房间）
   // ----------------------------------------------------------------
   socket.on('game:next_round', () => {

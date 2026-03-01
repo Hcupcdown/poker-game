@@ -8,8 +8,25 @@
       </div>
       <div class="top-right">
         <span class="room-code">{{ roomId }}</span>
+        <van-button
+          v-if="isOwner"
+          size="mini"
+          type="danger"
+          style="margin-left: 8px; font-size: 11px;"
+          @click="showEndConfirm = true"
+        >结束游戏</van-button>
       </div>
     </div>
+
+    <!-- ===== 结束游戏确认 ===== -->
+    <van-dialog
+      v-model:show="showEndConfirm"
+      title="结束游戏"
+      message="确定要结束本局游戏吗？所有玩家将看到最终结算。"
+      show-cancel-button
+      confirm-button-color="#e74c3c"
+      @confirm="endGame"
+    />
 
     <!-- ===== 牌桌主区域 ===== -->
     <div class="table-area">
@@ -367,6 +384,35 @@
       </div>
     </van-popup>
 
+    <!-- ===== 最终结算弹窗（房主结束游戏） ===== -->
+    <van-popup
+      v-model:show="showFinalResult"
+      round
+      position="center"
+      :close-on-click-overlay="false"
+      :style="{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.15)', width: '90%' }"
+    >
+      <div class="result-popup">
+        <div class="result-title">🏆 最终结算</div>
+        <div class="final-players">
+          <div
+            v-for="(p, i) in finalPlayers"
+            :key="p.id"
+            class="final-player-row"
+            :class="{ 'is-top': i === 0 }"
+          >
+            <span class="final-rank">{{ ['🥇','🥈','🥉'][i] || (i+1)+'.' }}</span>
+            <span class="final-avatar">{{ p.avatar }}</span>
+            <span class="final-name">{{ p.nickname }}</span>
+            <span class="final-chips gold">{{ p.chips }} 筹码</span>
+          </div>
+        </div>
+        <van-button block round class="btn-green" style="margin-top: 20px;" @click="backToLobby">
+          返回大厅
+        </van-button>
+      </div>
+    </van-popup>
+
     <!-- ===== 操作日志 ===== -->
     <div class="action-log">
       <transition-group name="fade">
@@ -413,6 +459,21 @@ const gameState = ref({
   players: [],
   lastAction: null
 })
+
+// ====== 房主权限 ======
+const isOwner = computed(() => store.player?.id === store.room?.ownerId)
+const showEndConfirm = ref(false)
+const showFinalResult = ref(false)
+const finalPlayers = ref([])
+
+function endGame() {
+  getSocket().emit('game:end')
+}
+
+function backToLobby() {
+  showFinalResult.value = false
+  router.replace('/lobby')
+}
 
 // ====== 计算属性 ======
 const me = computed(() => gameState.value.players.find(p => p.id === store.player?.id))
@@ -742,6 +803,15 @@ onMounted(() => {
     }, 60000)
   })
 
+  // 最终结算（房主结束游戏）
+  socket.on('game:final_result', ({ players }) => {
+    clearTimeout(autoBackTimer)
+    showResult.value = false
+    finalPlayers.value = players
+    showFinalResult.value = true
+    store.setGameState(null)
+  })
+
   // 等待进度更新
   socket.on('game:next_round_ready', ({ ready, total }) => {
     nextRoundReady.value = ready
@@ -808,6 +878,7 @@ onUnmounted(() => {
   socket.off('game:start')
   socket.off('player:action:log')
   socket.off('game:result')
+  socket.off('game:final_result')
   socket.off('game:next_round_ready')
   socket.off('game:next_round_start')
   socket.off('player:bust')
@@ -2026,6 +2097,33 @@ function isRedCard(card) {
   color: rgba(255,255,255,0.45);
   margin-top: 8px;
 }
+
+/* ===== 最终结算 ===== */
+.final-players {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.final-player-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+}
+
+.final-player-row.is-top {
+  background: rgba(255, 215, 0, 0.12);
+  border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+.final-rank { font-size: 20px; width: 28px; text-align: center; }
+.final-avatar { font-size: 22px; }
+.final-name { flex: 1; font-size: 14px; color: rgba(255,255,255,0.9); }
+.final-chips { font-size: 14px; font-weight: 700; }
 
 /* ===== 操作日志 ===== */
 .action-log {
