@@ -99,9 +99,9 @@
           <div class="opp-info">
             <div class="opp-name">{{ p.nickname }}</div>
             <!-- 当前下注 -->
-            <div v-if="p.currentBet > 0 && p.status !== 'folded'" class="opp-bet">
+            <div v-if="getDisplayBet(p.id) > 0 && p.status !== 'folded'" class="opp-bet">
               <img src="/chip.png" class="chip-icon" />
-              <span class="bet-amount">{{ p.currentBet }}</span>
+              <span class="bet-amount">{{ getDisplayBet(p.id) }}</span>
             </div>
           </div>
 
@@ -235,9 +235,9 @@
     <!-- ===== 我的区域 ===== -->
     <div class="my-area" ref="myAreaRef">
       <!-- 我的已下注（底牌上方） -->
-      <div class="my-bet-above" v-if="myCurrentBet > 0">
+      <div class="my-bet-above" v-if="myDisplayBet > 0">
         <img src="/chip.png" class="chip-icon chip-icon-lg" />
-        <span class="my-bet-above-val">{{ myCurrentBet }}</span>
+        <span class="my-bet-above-val">{{ myDisplayBet }}</span>
       </div>
       <!-- 我的手牌区域（含左侧余额） -->
       <div class="my-cards-row">
@@ -678,6 +678,36 @@ const opponents = computed(() => gameState.value.players.filter(p => p.id !== st
 const myCards = computed(() => me.value?.cards || [])
 const myChips = computed(() => me.value?.chips || 0)
 const myCurrentBet = computed(() => me.value?.currentBet || 0)
+
+// ===== 下注金额持久化显示 =====
+// 独立维护的下注显示Map，不会因后端阶段切换清零currentBet而消失
+const displayBets = ref({})
+
+// 监听 gameState 变化，更新 displayBets（只更新非零值，不主动清零）
+watch(() => gameState.value.players, (players) => {
+  if (!players || !players.length) return
+  const newBets = { ...displayBets.value }
+  players.forEach(p => {
+    if (p.currentBet > 0) {
+      newBets[p.id] = p.currentBet
+    }
+    // 弃牌玩家清零显示
+    if (p.status === 'folded') {
+      newBets[p.id] = 0
+    }
+  })
+  displayBets.value = newBets
+}, { deep: true })
+
+// 获取某个玩家的显示下注金额
+function getDisplayBet(playerId) {
+  return displayBets.value[playerId] || 0
+}
+// 自己的显示下注金额
+const myDisplayBet = computed(() => {
+  if (!me.value) return 0
+  return getDisplayBet(me.value.id)
+})
 const communityCards = computed(() => gameState.value.communityCards || [])
 const lastAction = computed(() => gameState.value.lastAction)
 
@@ -1017,6 +1047,7 @@ onMounted(() => {
     showResult.value = false
     showFinalResult.value = false
     nextRoundSent.value = false
+    displayBets.value = {} // 新局开始，清零下注显示
     gameState.value = gs
     store.setGameState(gs)
     communitySlots.value = []
@@ -1088,6 +1119,7 @@ onMounted(() => {
     nextRoundSent.value = false
     nextRoundReady.value = 0
     nextRoundTotal.value = 0
+    displayBets.value = {} // 新局开始，清零下注显示
     gameState.value = gs
     store.setGameState(gs)
     // 重置公共牌 slots
