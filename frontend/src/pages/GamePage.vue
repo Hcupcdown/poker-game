@@ -764,13 +764,6 @@ onMounted(() => {
     router.replace('/lobby')
   })
 
-  // 所有玩家回房间（room:back 保留兼容）
-  socket.on('room:back', ({ roomId: rid }) => {
-    clearTimeout(autoBackTimer)
-    showResult.value = false
-    router.replace(`/room/${rid || roomId}`)
-  })
-
   // 玩家断线通知
   socket.on('player:disconnected', ({ nickname }) => {
     store.addLog(`${nickname} 断线`)
@@ -817,7 +810,6 @@ onUnmounted(() => {
   socket.off('game:result')
   socket.off('game:next_round_ready')
   socket.off('game:next_round_start')
-  socket.off('room:back')
   socket.off('player:bust')
   socket.off('player:disconnected')
   socket.off('player:auth:ok')
