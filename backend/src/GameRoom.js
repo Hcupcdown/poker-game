@@ -154,12 +154,15 @@ class GameRoom {
    * @param {number} [opts.startChips]  首局初始筹码（续局时忽略，保留当前筹码）
    * @param {boolean} [opts.resetChips] 强制重置筹码（首局使用）
    */
-  startGame({ startChips, resetChips } = {}) {
+  startGame({ startChips, resetChips, forceNextRound } = {}) {
     if (this.players.length < 2) throw new Error('至少需要2名玩家')
     this.status = 'playing'
 
     // 首局或强制重置时才覆盖筹码；续局保留上一局结束后的筹码
-    if (resetChips || !this._gameStarted) {
+    if (forceNextRound) {
+      // 明确续局，绝对不走 game:start / game:ready
+      this._isFirstGame = false
+    } else if (resetChips || !this._gameStarted) {
       const chips = parseInt(startChips) || 1000
       this.players.forEach(p => { p.chips = chips })
       this._isFirstGame = true   // 首局用 game:start（触发前端跳转）
@@ -250,10 +253,13 @@ class GameRoom {
     gs.currentPlayerId = gs.players[firstIdx].id
 
     // 首局发 game:start（前端需要先跳转到游戏页）；续局发 game:next_round_start（原地刷新）
+    console.log(`[Game] startGame: _gameStarted=${this._gameStarted} resetChips=${resetChips} _isFirstGame=${this._isFirstGame}`)
     if (this._isFirstGame) {
       this._isFirstGame = false
+      console.log(`[Game] 广播 game:start（首局）`)
       this._broadcastGameStart()
     } else {
+      console.log(`[Game] 广播 game:next_round_start（续局）`)
       this._broadcastNextRoundStart()
     }
 

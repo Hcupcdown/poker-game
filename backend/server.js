@@ -376,7 +376,7 @@ io.on('connection', (socket) => {
     if (ready >= total) {
       room.nextRoundReady = null
       try {
-        room.startGame()
+        room.startGame({ forceNextRound: true })
         console.log(`[Game] 房间 ${room.id} 开始新一局`)
       } catch (err) {
         console.error(`[Game] 开始新一局失败: ${err.message}`)
