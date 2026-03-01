@@ -748,12 +748,14 @@ onMounted(() => {
     nextRoundTotal.value = total
   })
 
-  // 新一局开始（所有人就绪后后端直接发 game:start）
-  socket.on('game:start', (data) => {
+  // 续局开始（所有人就绪后后端发 game:next_round_start，原地刷新，不跳转）
+  socket.on('game:next_round_start', ({ gameState: gs }) => {
     clearTimeout(autoBackTimer)
     showResult.value = false
     nextRoundSent.value = false
-    store.setGameState(data.gameState)
+    gameState.value = gs
+    store.setGameState(gs)
+    triggerDealAnimation()
   })
 
   // 破产踢出
@@ -814,6 +816,7 @@ onUnmounted(() => {
   socket.off('player:action:log')
   socket.off('game:result')
   socket.off('game:next_round_ready')
+  socket.off('game:next_round_start')
   socket.off('room:back')
   socket.off('player:bust')
   socket.off('player:disconnected')

@@ -162,6 +162,9 @@ class GameRoom {
     if (resetChips || !this._gameStarted) {
       const chips = parseInt(startChips) || 1000
       this.players.forEach(p => { p.chips = chips })
+      this._isFirstGame = true   // 首局用 game:start（触发前端跳转）
+    } else {
+      this._isFirstGame = false  // 续局用 game:next_round_start（原地刷新）
     }
     this._gameStarted = true
 
@@ -246,8 +249,13 @@ class GameRoom {
     const firstIdx = (bbIdx + 1) % n
     gs.currentPlayerId = gs.players[firstIdx].id
 
-    // 广播 game:start（含各自手牌）
-    this._broadcastGameStart()
+    // 首局发 game:start（前端需要先跳转到游戏页）；续局发 game:next_round_start（原地刷新）
+    if (this._isFirstGame) {
+      this._isFirstGame = false
+      this._broadcastGameStart()
+    } else {
+      this._broadcastNextRoundStart()
+    }
 
     // 启动行动超时计时器
     this._startActionTimer()
@@ -708,7 +716,7 @@ class GameRoom {
   // ============================
 
   /**
-   * 广播 game:start
+   * 广播 game:start（首局）
    * 每个玩家收到的手牌只包含自己的
    */
   _broadcastGameStart() {
@@ -723,6 +731,20 @@ class GameRoom {
       // 构造该玩家视角的 gameState：只有自己的 cards 是明牌
       const stateForPlayer = this._buildStateForPlayer(player.id)
       socket.emit('game:start', { gameState: stateForPlayer })
+    }
+  }
+
+  /**
+   * 广播 game:next_round_start（续局，玩家已在游戏页，直接刷新状态）
+   */
+  _broadcastNextRoundStart() {
+    for (const player of this.players) {
+      const socketId = player.socketId
+      if (!socketId) continue
+      const socket = this.io.sockets.sockets.get(socketId)
+      if (!socket) continue
+      const stateForPlayer = this._buildStateForPlayer(player.id)
+      socket.emit('game:next_round_start', { gameState: stateForPlayer })
     }
   }
 
