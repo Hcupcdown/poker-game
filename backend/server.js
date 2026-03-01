@@ -31,7 +31,6 @@ const fs = require('fs')
 const distPath = path.join(__dirname, '../frontend/dist')
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath))
-  // SPA fallback：所有非 /api 和非 /socket.io 路由都返回 index.html
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) return next()
     res.sendFile(path.join(distPath, 'index.html'))
@@ -39,11 +38,8 @@ if (fs.existsSync(distPath)) {
 }
 
 // ====== 内存存储 ======
-// players: Map<playerId, playerData>
 const players = new Map()
-// rooms: Map<roomCode, GameRoom>
 const rooms = new Map()
-// socketToPlayer: Map<socketId, playerId>
 const socketToPlayer = new Map()
 
 // ====== REST API ======
@@ -146,7 +142,6 @@ io.on('connection', (socket) => {
     const { roomId, player: clientPlayer } = data || {}
     let playerId = socketToPlayer.get(socket.id)
 
-    // 如果还没认证，用客户端传来的 player
     let player = playerId ? players.get(playerId) : null
     if (!player && clientPlayer) {
       player = { ...clientPlayer, socketId: socket.id }
@@ -161,11 +156,13 @@ io.on('connection', (socket) => {
     const room = rooms.get(normalId)
 
     if (!room) { socket.emit('error', { message: '房间不存在，请先创建' }); return }
-    if (room.status === 'playing') {
-      // 游戏中允许断线重连
+
+    // 游戏中/轮间等待 允许断线重连
+    if (room.status === 'playing' || room.status === 'round_end') {
       const existingPlayer = room.players.find(p => p.id === playerId)
       if (!existingPlayer) { socket.emit('error', { message: '游戏已开始，无法加入' }); return }
     }
+
     if (room.isFull() && !room.players.find(p => p.id === playerId)) {
       socket.emit('error', { message: '房间已满' }); return
     }
@@ -180,8 +177,7 @@ io.on('connection', (socket) => {
       socket.join(normalId)
       console.log(`[Room] ${player.nickname} 重连房间 ${normalId}`)
       socket.emit('room:update', { room: room.getRoomInfo() })
-      if (room.status === 'playing' && room.gameState) {
-        // 重连时推送当前游戏状态
+      if ((room.status === 'playing' || room.status === 'round_end') && room.gameState) {
         socket.emit('game:state', room.getGameStateForPlayer(playerId))
       }
       return
@@ -225,12 +221,7 @@ io.on('connection', (socket) => {
   })
 
   // ----------------------------------------------------------------
-  // room:start — 开始游戏
-  //
-  // 流程：
-  //   1. 后端立即广播 game:ready（roomId），前端各自跳转到 /game/:id
-  //   2. 延迟 600ms（等前端跳转+挂载完成）后再 startGame()
-  //   3. startGame() 内 _broadcastGameStart() 推送 game:start 给所有人
+  // room:start — 房主开始游戏（首局）
   // ----------------------------------------------------------------
   socket.on('room:start', ({ startChips } = {}) => {
     const playerId = socketToPlayer.get(socket.id)
@@ -238,27 +229,25 @@ io.on('connection', (socket) => {
 
     const room = findPlayerRoom(playerId)
     if (!room) { socket.emit('error', { message: '未在任何房间' }); return }
-
     if (room.ownerId !== playerId) { socket.emit('error', { message: '只有房主可以开始游戏' }); return }
     if (room.players.length < 2) { socket.emit('error', { message: '至少需要2名玩家才能开始' }); return }
-    if (room.status === 'playing') { socket.emit('error', { message: '游戏已经开始了' }); return }
+    if (room.status !== 'waiting') { socket.emit('error', { message: '游戏已经开始了' }); return }
 
     const roomId = room.id
     console.log(`[Game] 房间 ${roomId} 即将开始，玩家: ${room.players.map(p => p.nickname).join(', ')}`)
 
-    // Step 1: 通知所有人跳转
+    // 通知所有人跳转到游戏页面
     io.to(roomId).emit('game:ready', { roomId })
 
-    // Step 2: 等待前端跳转+挂载完成后再发牌
+    // 等待前端跳转+挂载完成后再发牌
     setTimeout(() => {
-      // 二次检查（防止跳转期间有人离开）
       if (room.players.length < 2) {
         io.to(roomId).emit('error', { message: '玩家不足，游戏取消' })
         return
       }
       try {
-        room.startGame({ startChips, resetChips: true })
-        console.log(`[Game] 房间 ${roomId} 游戏开始，初始筹码: ${startChips || '默认'}`)
+        room.startGame({ startChips, isFirstRound: true })
+        console.log(`[Game] 房间 ${roomId} 首局开始，初始筹码: ${startChips || '默认'}`)
       } catch (err) {
         console.error(`[Game] 房间 ${roomId} 开始失败: ${err.message}`)
         io.to(roomId).emit('error', { message: err.message })
@@ -267,23 +256,19 @@ io.on('connection', (socket) => {
   })
 
   // ----------------------------------------------------------------
-  // game:request_state — 客户端主动拉取游戏状态（GamePage onMounted）
+  // game:request_state — 客户端主动拉取游戏状态
   // ----------------------------------------------------------------
   socket.on('game:request_state', () => {
     const playerId = socketToPlayer.get(socket.id)
     if (!playerId) return
 
     const room = findPlayerRoom(playerId)
-    if (!room) {
-      // 可能玩家还没 join，等它 join 后会推状态
-      return
-    }
+    if (!room) return
 
-    if (room.status === 'playing' && room.gameState) {
+    if ((room.status === 'playing' || room.status === 'round_end') && room.gameState) {
       socket.emit('game:state', room.getGameStateForPlayer(playerId))
       console.log(`[Game] 推送状态给 ${playerId}（主动请求）`)
     } else {
-      // 游戏未开始，推房间信息
       socket.emit('room:update', { room: room.getRoomInfo() })
     }
   })
@@ -311,7 +296,7 @@ io.on('connection', (socket) => {
   })
 
   // ----------------------------------------------------------------
-  // game:end — 房主强制结束游戏，广播最终筹码排名
+  // game:end — 房主强制结束游戏
   // ----------------------------------------------------------------
   socket.on('game:end', () => {
     const playerId = socketToPlayer.get(socket.id)
@@ -324,7 +309,7 @@ io.on('connection', (socket) => {
       return
     }
 
-    // 收集所有玩家最终筹码（game 内取 gameState，否则取 room.players）
+    // 收集所有玩家最终筹码
     const gs = room.gameState
     const finalPlayers = room.players.map(p => {
       const gp = gs ? gs.players.find(gpl => gpl.id === p.id) : null
@@ -336,18 +321,19 @@ io.on('connection', (socket) => {
       }
     }).sort((a, b) => b.chips - a.chips)
 
-    room.clearActionTimer && room.clearActionTimer()
-    room.status = 'waiting'
-    room.gameState = null
-    room.nextRoundReady = null
+    room.clearActionTimer()
+    room.resetToWaiting()
 
-    io.to(room.id).emit('game:final_result', { players: finalPlayers })
+    io.to(room.id).emit('game:final_result', {
+      players: finalPlayers,
+      reason: '房主结束了游戏'
+    })
     io.to(room.id).emit('room:update', { room: room.getRoomInfo() })
     console.log(`[Game] 房间 ${room.id} 被房主强制结束`)
   })
 
   // ----------------------------------------------------------------
-  // game:next_round — 下一局（全员确认后直接开新局，不回房间）
+  // game:next_round — 玩家确认进入下一轮
   // ----------------------------------------------------------------
   socket.on('game:next_round', () => {
     const playerId = socketToPlayer.get(socket.id)
@@ -355,7 +341,7 @@ io.on('connection', (socket) => {
 
     const room = findPlayerRoom(playerId)
     if (!room) return
-    if (room.status !== 'finished') return
+    if (room.status !== 'round_end') return
 
     // 记录已确认的玩家
     if (!room.nextRoundReady) room.nextRoundReady = new Set()
@@ -372,14 +358,13 @@ io.on('connection', (socket) => {
       readyIds: [...room.nextRoundReady]
     })
 
-    // 全员就绪，检查是否有人破产
+    // 全员就绪
     if (ready >= total) {
       room.nextRoundReady = null
 
-      // 检查是否有人筹码耗尽
+      // 检查是否有人筹码耗尽 → 游戏结束
       const bustedPlayers = room.players.filter(p => p.chips <= 0)
       if (bustedPlayers.length > 0) {
-        // 有人破产，触发最终结算
         const finalPlayers = room.players.map(p => ({
           id: p.id,
           nickname: p.nickname,
@@ -387,9 +372,7 @@ io.on('connection', (socket) => {
           chips: p.chips
         })).sort((a, b) => b.chips - a.chips)
 
-        room.clearActionTimer && room.clearActionTimer()
-        room.status = 'waiting'
-        room.gameState = null
+        room.resetToWaiting()
 
         io.to(room.id).emit('game:final_result', {
           players: finalPlayers,
@@ -400,11 +383,32 @@ io.on('connection', (socket) => {
         return
       }
 
+      // 检查是否只剩不足2人
+      const alivePlayers = room.players.filter(p => p.chips > 0)
+      if (alivePlayers.length < 2) {
+        const finalPlayers = room.players.map(p => ({
+          id: p.id,
+          nickname: p.nickname,
+          avatar: p.avatar,
+          chips: p.chips
+        })).sort((a, b) => b.chips - a.chips)
+
+        room.resetToWaiting()
+
+        io.to(room.id).emit('game:final_result', {
+          players: finalPlayers,
+          reason: '存活玩家不足，游戏结束'
+        })
+        io.to(room.id).emit('room:update', { room: room.getRoomInfo() })
+        return
+      }
+
+      // 开始下一轮
       try {
-        room.startGame({ forceNextRound: true })
-        console.log(`[Game] 房间 ${room.id} 开始新一局`)
+        room.startGame({ isFirstRound: false })
+        console.log(`[Game] 房间 ${room.id} 开始新一轮`)
       } catch (err) {
-        console.error(`[Game] 开始新一局失败: ${err.message}`)
+        console.error(`[Game] 开始新一轮失败: ${err.message}`)
         io.to(room.id).emit('error', { message: err.message })
       }
     }
@@ -436,7 +440,6 @@ function leaveCurrentRoom(socket, playerId) {
         rooms.delete(code)
         console.log(`[Room] 房间 ${code} 已删除（无人）`)
       } else if (wasOwner) {
-        // 房主离开，解散房间，通知剩余玩家回大厅
         rooms.delete(code)
         io.to(code).emit('room:disbanded', { message: '房主已离开，房间已解散' })
         console.log(`[Room] 房间 ${code} 因房主离开而解散`)
@@ -457,11 +460,23 @@ function handleDisconnect(socket, playerId) {
     if (p) {
       p.connected = false
       const wasOwner = room.ownerId === playerId
-      if (room.status === 'playing') {
+      if (room.status === 'playing' || room.status === 'round_end') {
         io.to(code).emit('player:disconnected', { playerId, nickname: p.nickname })
-        room.handlePlayerDisconnect(playerId)
+        if (room.status === 'playing') {
+          room.handlePlayerDisconnect(playerId)
+        }
+        // round_end 状态下断线：检查是否所有在线玩家都已确认
+        if (room.status === 'round_end' && room.nextRoundReady) {
+          const connectedPlayers = room.players.filter(pl => pl.connected !== false)
+          const total = connectedPlayers.length
+          const ready = [...room.nextRoundReady].filter(id => connectedPlayers.some(pl => pl.id === id)).length
+          if (ready >= total && total >= 2) {
+            // 触发下一轮检查（模拟全员就绪）
+            io.to(code).emit('game:next_round_ready', { ready, total, readyIds: [...room.nextRoundReady] })
+          }
+        }
       } else {
-        // 等待室：给 30s 重连机会，超时清除
+        // 等待室：30s 重连机会
         setTimeout(() => {
           const still = room.players.find(pl => pl.id === playerId)
           if (still && !still.connected) {

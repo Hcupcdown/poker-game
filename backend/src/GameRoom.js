@@ -1,27 +1,35 @@
 /**
  * GameRoom.js - 房间与游戏核心逻辑
  *
- * 游戏阶段（phase）与前端 GamePage.vue PHASE_NAMES 对应：
+ * 游戏阶段（phase）：
  *   preflop → 翻牌前
  *   flop    → 翻牌
  *   turn    → 转牌
  *   river   → 河牌
  *   showdown → 摊牌
  *
- * 玩家状态（status）与前端 PLAYER_STATUS_COLORS 对应：
+ * 玩家状态（status）：
  *   active  → 活跃
  *   folded  → 已弃牌
  *   allin   → 全押
  *   out     → 出局（筹码为0）
  *
- * Socket.IO 事件：
- *   server→client:
- *     game:start     游戏开始（含初始 gameState）
- *     game:state     游戏状态更新
- *     game:result    本局结算结果
- *     room:update    房间信息更新
- *     player:action:log  行动日志广播
- *     error          错误信息
+ * 房间状态（this.status）：
+ *   waiting   → 等待开始
+ *   playing   → 游戏中
+ *   round_end → 本轮结束，等待玩家确认下一轮
+ *
+ * Socket.IO 事件（server→client）：
+ *   game:start            首局开始（含初始 gameState，前端需跳转）
+ *   game:next_round_start 续局开始（含新 gameState，前端原地刷新）
+ *   game:state            游戏状态更新
+ *   game:result           本轮结算结果
+ *   game:final_result     最终结算（游戏结束）
+ *   game:next_round_ready 下一轮等待进度
+ *   room:update           房间信息更新
+ *   player:action:log     行动日志广播
+ *   player:bust           破产通知
+ *   error                 错误信息
  */
 
 const Deck = require('./Deck')
@@ -40,26 +48,26 @@ class GameRoom {
     this.smallBlind = smallBlind || 10
     this.bigBlind = bigBlind || 20
     this.maxPlayers = maxPlayers || 6
-    this.io = io  // Socket.IO 实例，用于广播
+    this.io = io
 
     /** @type {Array<PlayerInRoom>} */
-    this.players = []       // 房间内所有玩家（含游戏中/旁观）
-    this.status = 'waiting' // waiting | playing | finished
+    this.players = []
+    this.status = 'waiting' // waiting | playing | round_end
 
     // 游戏状态（playing 时有值）
     this.gameState = null
     this.deck = null
-    this.actionTimer = null  // 当前行动超时计时器
-    this.dealerIndex = -1    // 庄家位索引（每局轮换）
+    this.actionTimer = null
+    this.dealerIndex = -1  // 庄家位索引（每局轮换）
+
+    // 下一轮确认集合
+    this.nextRoundReady = null
   }
 
   // ============================
   // 房间管理
   // ============================
 
-  /**
-   * 玩家加入房间
-   */
   addPlayer(playerData, socket) {
     if (this.isFull()) throw new Error('房间已满')
 
@@ -83,16 +91,11 @@ class GameRoom {
     return p
   }
 
-  /**
-   * 移除玩家
-   */
   removePlayer(playerId) {
     const idx = this.players.findIndex(p => p.id === playerId)
     if (idx === -1) return null
     const [removed] = this.players.splice(idx, 1)
-    // 重新分配座位索引
     this.players.forEach((p, i) => { p.seatIndex = i })
-    // 如果房主离开，转让给第一个玩家
     if (this.ownerId === playerId && this.players.length > 0) {
       this.ownerId = this.players[0].id
     }
@@ -108,10 +111,6 @@ class GameRoom {
     return owner ? owner.nickname : '未知'
   }
 
-  /**
-   * 获取房间基本信息（用于等待室）
-   * 对应前端 RoomPage.vue 需要的 room 数据结构
-   */
   getRoomInfo() {
     return {
       id: this.id,
@@ -133,13 +132,11 @@ class GameRoom {
     }
   }
 
-  /**
-   * 结束游戏后重置为等待状态
-   */
   resetToWaiting() {
     this.status = 'waiting'
     this.gameState = null
     this.deck = null
+    this.nextRoundReady = null
     this.clearActionTimer()
   }
 
@@ -148,87 +145,81 @@ class GameRoom {
   // ============================
 
   /**
-   * 开始新一局游戏
-   * 被 server.js 的 room:start 事件调用
+   * 开始新一轮游戏
    * @param {object} opts
-   * @param {number} [opts.startChips]  首局初始筹码（续局时忽略，保留当前筹码）
-   * @param {boolean} [opts.resetChips] 强制重置筹码（首局使用）
+   * @param {number}  [opts.startChips]   首局初始筹码
+   * @param {boolean} [opts.isFirstRound] 是否首局（需要前端跳转）
    */
-  startGame({ startChips, resetChips, forceNextRound } = {}) {
+  startGame({ startChips, isFirstRound } = {}) {
     if (this.players.length < 2) throw new Error('至少需要2名玩家')
-    this.status = 'playing'
 
-    // 首局或强制重置时才覆盖筹码；续局保留上一局结束后的筹码
-    if (forceNextRound) {
-      // 明确续局，绝对不走 game:start / game:ready
-      this._isFirstGame = false
-    } else if (resetChips || !this._gameStarted) {
+    // 首局时重置筹码
+    if (isFirstRound) {
       const chips = parseInt(startChips) || 1000
       this.players.forEach(p => { p.chips = chips })
-      this._isFirstGame = true   // 首局用 game:start（触发前端跳转）
-    } else {
-      this._isFirstGame = false  // 续局用 game:next_round_start（原地刷新）
+      this.dealerIndex = -1 // 重置庄家位
     }
-    this._gameStarted = true
 
-    // 筹码为 0 的玩家踢出（破产）
-    const bustedPlayers = this.players.filter(p => p.chips <= 0)
-    bustedPlayers.forEach(p => {
-      this.removePlayer(p.id)
-      const s = this.io.sockets.sockets.get(p.socketId)
-      if (s) s.emit('player:bust', { message: '你的筹码已耗尽，已退出游戏' })
-    })
-    if (bustedPlayers.length > 0) {
-      this.io.to(this.id).emit('room:update', { room: this.getRoomInfo() })
-    }
+    this.status = 'playing'
+    this.nextRoundReady = null
 
     // 初始化牌组
     this.deck = new Deck()
     this.deck.shuffle()
 
-    // 参与本局的玩家（筹码 > 0 的才能参与）
+    // 参与本局的玩家（筹码 > 0）
     const activePlayers = this.players.filter(p => p.chips > 0)
     if (activePlayers.length < 2) throw new Error('参与玩家筹码不足')
 
     // 庄家位轮换
     this.dealerIndex = (this.dealerIndex + 1) % activePlayers.length
 
+    const n = activePlayers.length
+
     // 初始化游戏状态
     this.gameState = {
       phase: 'preflop',
       communityCards: [],
       pot: 0,
-      sidePots: [],        // 边池（all-in 时）
+      sidePots: [],
       bigBlind: this.bigBlind,
       smallBlind: this.smallBlind,
       currentPlayerId: null,
       lastAction: null,
-      // 本局参与玩家（含游戏内状态）
       players: activePlayers.map((p, i) => ({
         id: p.id,
         nickname: p.nickname,
         avatar: p.avatar,
         chips: p.chips,
-        cards: [],          // 手牌（只对该玩家自己可见）
-        currentBet: 0,      // 当前下注（本轮）
-        totalBet: 0,        // 总下注（本局）
-        status: 'active',   // active | folded | allin | out
+        cards: [],
+        currentBet: 0,
+        totalBet: 0,
+        status: 'active',
         seatIndex: i,
         isDealer: false,
         isSmallBlind: false,
-        isBigBlind: false
+        isBigBlind: false,
+        hasActed: false
       }))
     }
 
-    // 标记庄家/小盲/大盲位
     const gs = this.gameState
-    const n = gs.players.length
-    gs.players[this.dealerIndex % n].isDealer = true
 
-    // 小盲：庄家下一位
-    const sbIdx = (this.dealerIndex + 1) % n
-    // 大盲：庄家下两位
-    const bbIdx = (this.dealerIndex + 2) % n
+    // ---- 标记庄家/盲注位 ----
+    // 2人局特殊规则：庄家 = 小盲，另一人 = 大盲
+    // 多人局：庄家下一位 = 小盲，庄家下两位 = 大盲
+    const dealerIdx = this.dealerIndex % n
+    gs.players[dealerIdx].isDealer = true
+
+    let sbIdx, bbIdx
+    if (n === 2) {
+      // Heads-up：庄家是小盲
+      sbIdx = dealerIdx
+      bbIdx = (dealerIdx + 1) % n
+    } else {
+      sbIdx = (dealerIdx + 1) % n
+      bbIdx = (dealerIdx + 2) % n
+    }
 
     gs.players[sbIdx].isSmallBlind = true
     gs.players[bbIdx].isBigBlind = true
@@ -240,7 +231,7 @@ class GameRoom {
       }
     }
 
-    // 预先发好5张公共牌（藏起来，阶段推进时翻出）
+    // 预发5张公共牌
     gs._hiddenCommunityCards = this.deck.dealMultiple(5)
 
     // 收取盲注
@@ -248,14 +239,18 @@ class GameRoom {
     this._postBlind(gs.players[bbIdx], this.bigBlind)
     gs.pot = gs.players.reduce((s, p) => s + p.currentBet, 0)
 
-    // preflop 第一个行动者是大盲后一位
-    const firstIdx = (bbIdx + 1) % n
+    // preflop 第一个行动者：大盲后一位
+    // 2人局特殊：小盲（庄家）先行动
+    let firstIdx
+    if (n === 2) {
+      firstIdx = sbIdx // 庄家/小盲先说话
+    } else {
+      firstIdx = (bbIdx + 1) % n
+    }
     gs.currentPlayerId = gs.players[firstIdx].id
 
-    // 首局发 game:start（前端需要先跳转到游戏页）；续局发 game:next_round_start（原地刷新）
-    console.log(`[Game] startGame: _gameStarted=${this._gameStarted} resetChips=${resetChips} _isFirstGame=${this._isFirstGame}`)
-    if (this._isFirstGame) {
-      this._isFirstGame = false
+    // 广播
+    if (isFirstRound) {
       console.log(`[Game] 广播 game:start（首局）`)
       this._broadcastGameStart()
     } else {
@@ -266,34 +261,26 @@ class GameRoom {
     // 启动行动超时计时器
     this._startActionTimer()
 
-    console.log(`[Game] 房间 ${this.id} 新局开始，庄家: ${gs.players[this.dealerIndex % n].nickname}`)
+    console.log(`[Game] 房间 ${this.id} 新局开始，庄家: ${gs.players[dealerIdx].nickname}，小盲: ${gs.players[sbIdx].nickname}，大盲: ${gs.players[bbIdx].nickname}`)
   }
 
   /**
    * 处理玩家行动
-   * @param {string} playerId
-   * @param {string} type  fold | call | check | raise | allin
-   * @param {number} [amount]  raise 时的加注到金额
    */
   handlePlayerAction(playerId, type, amount) {
     const gs = this.gameState
     if (!gs) throw new Error('游戏未开始')
-
-    // 验证是否轮到该玩家
-    if (gs.currentPlayerId !== playerId) {
-      throw new Error('还没轮到你行动')
-    }
+    if (gs.currentPlayerId !== playerId) throw new Error('还没轮到你行动')
 
     const player = gs.players.find(p => p.id === playerId)
-    if (!player || player.status !== 'active') {
-      throw new Error('玩家状态异常')
-    }
+    if (!player || player.status !== 'active') throw new Error('玩家状态异常')
 
-    // 停止超时计时器
     this.clearActionTimer()
 
-    // 当前最高下注
     const maxBet = Math.max(...gs.players.map(p => p.currentBet))
+
+    // 记录行动前的下注额，用于计算 lastAction.amount
+    const betBefore = player.currentBet
 
     switch (type) {
       case 'fold':
@@ -301,10 +288,7 @@ class GameRoom {
         break
 
       case 'check':
-        // 看牌：只有当前下注等于最高下注时才能看牌
-        if (player.currentBet < maxBet) {
-          throw new Error('无法看牌，需要跟注或弃牌')
-        }
+        if (player.currentBet < maxBet) throw new Error('无法看牌，需要跟注或弃牌')
         this._doCheck(player)
         break
 
@@ -313,11 +297,8 @@ class GameRoom {
         break
 
       case 'raise': {
-        // amount 是加注到的总额（不是加注的增量）
         const raiseTotal = Math.min(safeAmount(amount), player.chips + player.currentBet)
-        if (raiseTotal <= maxBet) {
-          throw new Error('加注金额必须大于当前最高下注')
-        }
+        if (raiseTotal <= maxBet) throw new Error('加注金额必须大于当前最高下注')
         this._doRaise(player, raiseTotal)
         break
       }
@@ -330,28 +311,27 @@ class GameRoom {
         throw new Error(`未知行动类型: ${type}`)
     }
 
-    // 记录最后一次行动（供前端 lastAction 显示）
+    // 计算实际投入金额
+    const actualAmount = player.currentBet - betBefore
+
     gs.lastAction = {
       type,
       name: player.nickname,
-      amount: type === 'raise' ? player.currentBet : (type === 'call' ? maxBet - (player.currentBet - (maxBet - player.currentBet)) : 0),
+      amount: actualAmount,
       playerId
     }
 
-    // 标记该玩家本轮已行动（用于 preflop BB 权利判断）
     player.hasActed = true
 
     // 日志广播
-    const actionDesc = this._getActionDesc(player, type, gs.lastAction.amount)
+    const actionDesc = this._getActionDesc(player, type, actualAmount)
     this.io.to(this.id).emit('player:action:log', { msg: actionDesc })
 
-    // 检查本轮是否结束
     this._checkRoundEnd()
   }
 
   /**
-   * 处理玩家断线（游戏中）
-   * 如果是当前行动者，自动 fold
+   * 处理玩家断线
    */
   handlePlayerDisconnect(playerId) {
     if (!this.gameState) return
@@ -360,7 +340,6 @@ class GameRoom {
     if (!player || player.status !== 'active') return
 
     if (gs.currentPlayerId === playerId) {
-      // 自动弃牌
       this.clearActionTimer()
       this._doFold(player)
       gs.lastAction = { type: 'fold', name: player.nickname + '(断线)', amount: 0, playerId }
@@ -383,24 +362,18 @@ class GameRoom {
 
   _doCall(player, maxBet) {
     const callAmount = maxBet - player.currentBet
-    if (callAmount <= 0) {
-      // 实际上是 check
-      return
-    }
+    if (callAmount <= 0) return
+
     const actual = Math.min(callAmount, player.chips)
     player.chips -= actual
     player.currentBet += actual
     player.totalBet += actual
     this.gameState.pot += actual
 
-    // 筹码不足，变成 all-in
-    if (player.chips === 0) {
-      player.status = 'allin'
-    }
+    if (player.chips === 0) player.status = 'allin'
   }
 
   _doRaise(player, raiseTo) {
-    // raiseTo 是本轮下注总额
     const additional = raiseTo - player.currentBet
     const actual = Math.min(additional, player.chips)
     player.chips -= actual
@@ -408,9 +381,7 @@ class GameRoom {
     player.totalBet += actual
     this.gameState.pot += actual
 
-    if (player.chips === 0) {
-      player.status = 'allin'
-    }
+    if (player.chips === 0) player.status = 'allin'
   }
 
   _doAllIn(player) {
@@ -434,13 +405,10 @@ class GameRoom {
   // 轮次控制
   // ============================
 
-  /**
-   * 检查本轮是否结束，并推进游戏流程
-   */
   _checkRoundEnd() {
     const gs = this.gameState
 
-    // 所有人都 fold 了（只剩一个活跃玩家）
+    // 只剩一个未弃牌玩家
     const notFolded = gs.players.filter(p => p.status !== 'folded')
     if (notFolded.length === 1) {
       this._settleGame(false)
@@ -454,16 +422,19 @@ class GameRoom {
       return
     }
 
-    // 检查本轮行动是否完成：
-    // 1. 所有 active 玩家下注额相等
-    // 2. 每个 active 玩家都至少行动过一次（hasActed = true）
+    // 仅剩一个 active 玩家（其余都 all-in 或弃牌），且该玩家下注额 >= 最高下注
+    if (activeOnly.length === 1) {
+      const maxBetNotFolded = Math.max(...notFolded.map(p => p.currentBet))
+      if (activeOnly[0].currentBet >= maxBetNotFolded && activeOnly[0].hasActed) {
+        this._dealRemainingCommunityCards()
+        return
+      }
+    }
+
+    // 检查本轮行动是否完成
     const maxBet = Math.max(...gs.players.filter(p => p.status !== 'folded').map(p => p.currentBet))
-    const allEqualBet = gs.players
-      .filter(p => p.status === 'active')
-      .every(p => p.currentBet === maxBet)
-    const allHaveActed = gs.players
-      .filter(p => p.status === 'active')
-      .every(p => p.hasActed === true)
+    const allEqualBet = activeOnly.every(p => p.currentBet === maxBet)
+    const allHaveActed = activeOnly.every(p => p.hasActed === true)
 
     if (allEqualBet && allHaveActed) {
       this._advancePhase()
@@ -472,23 +443,19 @@ class GameRoom {
     }
   }
 
-  /**
-   * 进入下一个游戏阶段
-   */
   _advancePhase() {
     const gs = this.gameState
-    const phases = PHASES
-    const currentIdx = phases.indexOf(gs.phase)
+    const currentIdx = PHASES.indexOf(gs.phase)
 
     if (currentIdx === -1 || gs.phase === 'showdown') {
       this._settleGame(true)
       return
     }
 
-    const nextPhase = phases[currentIdx + 1]
+    const nextPhase = PHASES[currentIdx + 1]
     gs.phase = nextPhase
 
-    // 重置本轮下注和行动标记（进入新轮）
+    // 重置本轮下注和行动标记
     gs.players.forEach(p => {
       if (p.status === 'active') {
         p.currentBet = 0
@@ -496,7 +463,7 @@ class GameRoom {
       }
     })
 
-    // 翻公共牌（从预发的隐藏牌里取，不再现场 deal）
+    // 翻公共牌
     const hidden = gs._hiddenCommunityCards || []
     if (nextPhase === 'flop') {
       gs.communityCards = hidden.slice(0, 3)
@@ -509,18 +476,13 @@ class GameRoom {
       return
     }
 
-    // 广播游戏状态（先翻牌、重置下注，再设置下一个行动者，最后广播）
     this._setFirstActivePlayerAfterDealer()
     this._broadcastGameState()
     this._startActionTimer()
   }
 
-  /**
-   * 翻完剩余公共牌（全员 all-in 情况）
-   */
   _dealRemainingCommunityCards() {
     const gs = this.gameState
-    // 从预发的隐藏公共牌里补全5张
     const hidden = gs._hiddenCommunityCards || []
     gs.communityCards = hidden.slice(0, 5)
     gs.phase = 'showdown'
@@ -528,9 +490,6 @@ class GameRoom {
     setTimeout(() => this._settleGame(true), 1000)
   }
 
-  /**
-   * 轮到下一个活跃玩家
-   */
   _nextPlayer() {
     const gs = this.gameState
     const players = gs.players
@@ -542,7 +501,6 @@ class GameRoom {
       nextIdx = (nextIdx + 1) % players.length
       count++
       if (count >= players.length) {
-        // 没有 active 玩家了
         this._checkRoundEnd()
         return
       }
@@ -553,9 +511,6 @@ class GameRoom {
     this._startActionTimer()
   }
 
-  /**
-   * 新一轮从庄家左手边的第一个 active 玩家开始
-   */
   _setFirstActivePlayerAfterDealer() {
     const gs = this.gameState
     const n = gs.players.length
@@ -564,7 +519,7 @@ class GameRoom {
     while (gs.players[idx].status !== 'active') {
       idx = (idx + 1) % n
       count++
-      if (count >= n) return // 全员弃牌/allin
+      if (count >= n) return
     }
     gs.currentPlayerId = gs.players[idx].id
   }
@@ -573,10 +528,6 @@ class GameRoom {
   // 结算
   // ============================
 
-  /**
-   * 结算游戏
-   * @param {boolean} showdown  是否需要摊牌比较牌型
-   */
   _settleGame(showdown) {
     const gs = this.gameState
     this.clearActionTimer()
@@ -587,7 +538,6 @@ class GameRoom {
     let results = []
 
     if (!showdown || notFolded.length === 1) {
-      // 只剩一人：直接获胜
       winners = [notFolded[0].id]
       results = gs.players.map(p => ({
         id: p.id,
@@ -595,11 +545,9 @@ class GameRoom {
         avatar: p.avatar,
         cards: p.cards,
         handName: p.id === notFolded[0].id ? '其他人弃牌' : '已弃牌',
-        nameZh: p.id === notFolded[0].id ? '其他人弃牌' : '已弃牌',
         isWinner: p.id === notFolded[0].id
       }))
     } else {
-      // 需要比较牌型
       const evalInput = notFolded.map(p => ({
         id: p.id,
         holeCards: p.cards
@@ -620,7 +568,7 @@ class GameRoom {
           }
         })
       } catch (e) {
-        // fallback
+        console.error(`[Game] 牌型评估失败: ${e.message}`)
         winners = [notFolded[0].id]
         results = gs.players.map(p => ({
           id: p.id,
@@ -633,14 +581,16 @@ class GameRoom {
       }
     }
 
-    // 分配底池
+    // 分配底池（处理余数：多余的筹码给第一个赢家）
     const totalPot = gs.pot
-    const gain = Math.floor(totalPot / winners.length)
-    winners.forEach(wid => {
+    const baseGain = Math.floor(totalPot / winners.length)
+    const remainder = totalPot % winners.length
+
+    winners.forEach((wid, idx) => {
+      const gain = baseGain + (idx === 0 ? remainder : 0)
       const p = gs.players.find(pl => pl.id === wid)
       if (p) {
         p.chips += gain
-        // 同步回房间玩家筹码
         const roomPlayer = this.players.find(rp => rp.id === wid)
         if (roomPlayer) roomPlayer.chips = p.chips
       }
@@ -652,25 +602,29 @@ class GameRoom {
       if (rp) rp.chips = gp.chips
     })
 
-    // 构建结算结果（对应前端 GamePage.vue roundResult 数据结构）
+    // 构建结算结果
     const winner = gs.players.find(p => winners.includes(p.id))
     const winnerResult = results.find(r => r.isWinner)
+    const winnerGain = baseGain + (winners.length > 0 ? remainder : 0)
+
     const roundResult = {
       winner: winner ? {
         id: winner.id,
         nickname: winner.nickname,
         avatar: winner.avatar,
         handName: winnerResult ? winnerResult.handName : '',
-        gain: gain
+        gain: winnerGain
       } : null,
       winners,
       allHands: results.map(r => {
         const gp = gs.players.find(p => p.id === r.id)
         const rp = this.players.find(p => p.id === r.id)
         const chipsAfter = rp ? rp.chips : 0
-        // totalBet 是本局投入底池的总额
         const invested = gp ? gp.totalBet || 0 : 0
-        const chipsChange = r.isWinner ? (gain - invested) : -invested
+        const isWin = r.isWinner
+        const winnerIdx = winners.indexOf(r.id)
+        const myGain = isWin ? (baseGain + (winnerIdx === 0 ? remainder : 0)) : 0
+        const chipsChange = myGain - invested
         return { ...r, chipsChange, chipsAfter }
       }),
       pot: totalPot,
@@ -680,21 +634,20 @@ class GameRoom {
     gs.phase = 'showdown'
     gs.currentPlayerId = null
 
-    // 检查是否有人筹码耗尽（破产）
+    // 检查是否有人筹码耗尽
     const bustedPlayers = this.players.filter(p => p.chips <= 0)
-    const gameOver = bustedPlayers.length > 0
-    roundResult.gameOver = gameOver
-    if (gameOver) {
+    roundResult.gameOver = bustedPlayers.length > 0
+    if (roundResult.gameOver) {
       roundResult.bustedNames = bustedPlayers.map(p => p.nickname)
     }
 
-    // 广播最终游戏状态（含手牌揭示和 gameOver 信息）
+    // 广播摊牌和结算
     this._broadcastShowdown(roundResult)
 
-    // 标记游戏结束（等待确认下一轮）
-    this.status = 'finished'
+    // 标记本轮结束，等待确认
+    this.status = 'round_end'
 
-    console.log(`[Game] 房间 ${this.id} 本局结算，赢家: ${winners.join(',')}，底池: ${totalPot}${gameOver ? '，有人破产，游戏结束' : ''}`)
+    console.log(`[Game] 房间 ${this.id} 本局结算，赢家: ${winners.join(',')}，底池: ${totalPot}${roundResult.gameOver ? '，有人破产' : ''}`)
   }
 
   // ============================
@@ -713,6 +666,7 @@ class GameRoom {
       console.log(`[Timer] ${player.nickname} 超时，自动弃牌`)
       this._doFold(player)
       gs.lastAction = { type: 'fold', name: player.nickname + '(超时)', amount: 0, playerId: player.id }
+      player.hasActed = true
       this.io.to(this.id).emit('player:action:log', { msg: `${player.nickname} 超时自动弃牌` })
       this._checkRoundEnd()
     }, ACTION_TIMEOUT_MS)
@@ -729,28 +683,18 @@ class GameRoom {
   // 广播
   // ============================
 
-  /**
-   * 广播 game:start（首局）
-   * 每个玩家收到的手牌只包含自己的
-   */
   _broadcastGameStart() {
     const gs = this.gameState
     for (const player of this.players) {
       const socketId = player.socketId
       if (!socketId) continue
-
       const socket = this.io.sockets.sockets.get(socketId)
       if (!socket) continue
-
-      // 构造该玩家视角的 gameState：只有自己的 cards 是明牌
       const stateForPlayer = this._buildStateForPlayer(player.id)
       socket.emit('game:start', { gameState: stateForPlayer })
     }
   }
 
-  /**
-   * 广播 game:next_round_start（续局，玩家已在游戏页，直接刷新状态）
-   */
   _broadcastNextRoundStart() {
     for (const player of this.players) {
       const socketId = player.socketId
@@ -762,9 +706,6 @@ class GameRoom {
     }
   }
 
-  /**
-   * 广播 game:state（常规更新）
-   */
   _broadcastGameState() {
     for (const player of this.players) {
       const socketId = player.socketId
@@ -775,39 +716,25 @@ class GameRoom {
     }
   }
 
-  /**
-   * 广播 showdown（摊牌，所有手牌可见）
-   */
   _broadcastShowdown(roundResult) {
     const gs = this.gameState
-    // showdown 时所有未弃牌的玩家手牌都公开
     const stateWithAllCards = {
       ...gs,
       players: gs.players.map(p => ({
         ...p,
-        // 弃牌者手牌隐藏（前端不显示），未弃牌者公开
         cards: p.status !== 'folded' ? p.cards : []
       }))
     }
     this.io.to(this.id).emit('game:state', stateWithAllCards)
-    // 稍后发结算结果
     setTimeout(() => {
       this.io.to(this.id).emit('game:result', roundResult)
     }, 800)
   }
 
-  /**
-   * 获取指定玩家视角的 gameState
-   */
   getGameStateForPlayer(playerId) {
     return this._buildStateForPlayer(playerId)
   }
 
-  /**
-   * 构建玩家视角的游戏状态
-   * - 自己的手牌：明牌
-   * - 其他人的手牌：隐藏（替换为 ['back', 'back']）
-   */
   _buildStateForPlayer(playerId) {
     const gs = this.gameState
     if (!gs) return null
@@ -833,16 +760,13 @@ class GameRoom {
       allin: 'All In'
     }
     const name = names[type] || type
-    if ((type === 'raise' || type === 'call') && amount > 0) {
+    if ((type === 'raise' || type === 'call' || type === 'allin') && amount > 0) {
       return `${player.nickname} ${name} ${amount}`
     }
     return `${player.nickname} ${name}`
   }
 }
 
-/**
- * 安全转数字
- */
 function safeAmount(val) {
   const n = parseInt(val, 10)
   return isNaN(n) || n < 0 ? 0 : n

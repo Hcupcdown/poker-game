@@ -516,7 +516,9 @@ const gameState = ref({
 })
 
 // ====== 房主权限 ======
-const isOwner = computed(() => store.player?.id === store.room?.ownerId)
+// ownerId 通过 room:update 事件同步，避免依赖 store.room
+const roomOwnerId = ref(store.room?.ownerId || '')
+const isOwner = computed(() => store.player?.id === roomOwnerId.value)
 const showEndConfirm = ref(false)
 const showFinalResult = ref(false)
 const finalPlayers = ref([])
@@ -905,10 +907,14 @@ onMounted(() => {
     }
   })
 
-  // 游戏开始（发牌）
+  // 游戏开始（首局发牌）
   socket.on('game:start', ({ gameState: gs }) => {
+    showResult.value = false
+    showFinalResult.value = false
+    nextRoundSent.value = false
     gameState.value = gs
     store.setGameState(gs)
+    communitySlots.value = []
     triggerDealAnimation()
   })
 
@@ -924,9 +930,9 @@ onMounted(() => {
     nextRoundSent.value = false
     nextRoundReady.value = 0
     nextRoundTotal.value = result.allHands?.length || 0
-    store.setGameState(null)
+    // 注意：不清空 gameState，保留牌桌展示
 
-    // 兜底：60秒后无人操作自动触发下一局
+    // 兜底：60秒后无人操作自动触发确认
     clearTimeout(autoBackTimer)
     autoBackTimer = setTimeout(() => {
       if (showResult.value && !nextRoundSent.value) {
@@ -943,6 +949,24 @@ onMounted(() => {
     finalReason.value = reason || ''
     showFinalResult.value = true
     store.setGameState(null)
+    // 重置游戏界面状态
+    gameState.value = {
+      phase: 'waiting',
+      communityCards: [],
+      pot: 0,
+      bigBlind: 20,
+      currentPlayerId: null,
+      players: [],
+      lastAction: null
+    }
+  })
+
+  // 房间信息更新（同步 ownerId）
+  socket.on('room:update', ({ room }) => {
+    if (room) {
+      store.setRoom(room)
+      roomOwnerId.value = room.ownerId
+    }
   })
 
   // 等待进度更新
@@ -951,13 +975,18 @@ onMounted(() => {
     nextRoundTotal.value = total
   })
 
-  // 续局开始（所有人就绪后后端发 game:next_round_start，原地刷新，不跳转）
+  // 续局开始（所有人就绪后直接刷新牌桌，开始发牌）
   socket.on('game:next_round_start', ({ gameState: gs }) => {
     clearTimeout(autoBackTimer)
     showResult.value = false
+    showFinalResult.value = false
     nextRoundSent.value = false
+    nextRoundReady.value = 0
+    nextRoundTotal.value = 0
     gameState.value = gs
     store.setGameState(gs)
+    // 重置公共牌 slots
+    communitySlots.value = []
     triggerDealAnimation()
   })
 
@@ -1017,6 +1046,7 @@ onUnmounted(() => {
   socket.off('player:bust')
   socket.off('player:disconnected')
   socket.off('player:auth:ok')
+  socket.off('room:update')
   socket.off('error')
 })
 
