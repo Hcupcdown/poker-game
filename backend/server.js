@@ -339,7 +339,6 @@ io.on('connection', (socket) => {
     room.clearActionTimer && room.clearActionTimer()
     room.status = 'waiting'
     room.gameState = null
-    room._gameStarted = false
     room.nextRoundReady = null
 
     io.to(room.id).emit('game:final_result', { players: finalPlayers })
