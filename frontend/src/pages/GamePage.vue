@@ -8,15 +8,51 @@
       </div>
       <div class="top-right">
         <span class="room-code">{{ roomId }}</span>
+        <!-- 牌型规则 -->
+        <van-button
+          size="mini"
+          style="margin-left: 8px; font-size: 11px; background: rgba(255,255,255,0.12); border-color: transparent; color: #fff;"
+          @click="showRules = true"
+        >📖 规则</van-button>
         <van-button
           v-if="isOwner"
           size="mini"
           type="danger"
-          style="margin-left: 8px; font-size: 11px;"
+          style="margin-left: 6px; font-size: 11px;"
           @click="showEndConfirm = true"
         >结束游戏</van-button>
       </div>
     </div>
+
+    <!-- ===== 牌型规则浮层 ===== -->
+    <van-popup
+      v-model:show="showRules"
+      round
+      position="bottom"
+      :style="{ background: '#1a1a2e', maxHeight: '80vh', overflowY: 'auto' }"
+    >
+      <div class="rules-panel">
+        <div class="rules-title">🃏 德州扑克牌型大小</div>
+        <div class="rules-subtitle">从大到小排列</div>
+        <div class="rule-row" v-for="r in HAND_RULES" :key="r.name">
+          <div class="rule-header">
+            <span class="rule-rank">{{ r.rank }}</span>
+            <span class="rule-name">{{ r.name }}</span>
+            <span class="rule-desc">{{ r.desc }}</span>
+          </div>
+          <div class="rule-cards">
+            <span
+              v-for="(c, i) in r.cards"
+              :key="i"
+              class="rule-card"
+              :class="c.red ? 'red' : 'black'"
+            >{{ c.v }}</span>
+          </div>
+        </div>
+        <div class="rules-note">同牌型比较最大牌点数，花色不分大小</div>
+        <van-button block round style="margin-top: 16px; background: rgba(255,255,255,0.1); color: #fff; border-color: transparent;" @click="showRules = false">关闭</van-button>
+      </div>
+    </van-popup>
 
     <!-- ===== 结束游戏确认 ===== -->
     <van-dialog
@@ -474,6 +510,82 @@ function backToLobby() {
   showFinalResult.value = false
   router.replace('/lobby')
 }
+
+// ====== 牌型规则 ======
+const showRules = ref(false)
+
+const HAND_RULES = [
+  {
+    rank: '① 皇家同花顺', name: '', desc: '同花色 A K Q J 10',
+    cards: [
+      { v: 'A♠', red: false }, { v: 'K♠', red: false }, { v: 'Q♠', red: false },
+      { v: 'J♠', red: false }, { v: '10♠', red: false }
+    ]
+  },
+  {
+    rank: '② 同花顺', name: '', desc: '同花色连续五张',
+    cards: [
+      { v: '9♥', red: true }, { v: '8♥', red: true }, { v: '7♥', red: true },
+      { v: '6♥', red: true }, { v: '5♥', red: true }
+    ]
+  },
+  {
+    rank: '③ 四条', name: '', desc: '四张相同点数',
+    cards: [
+      { v: 'K♠', red: false }, { v: 'K♥', red: true }, { v: 'K♦', red: true },
+      { v: 'K♣', red: false }, { v: '3♠', red: false }
+    ]
+  },
+  {
+    rank: '④ 葫芦', name: '', desc: '三条 + 一对',
+    cards: [
+      { v: 'Q♠', red: false }, { v: 'Q♥', red: true }, { v: 'Q♦', red: true },
+      { v: 'J♠', red: false }, { v: 'J♣', red: false }
+    ]
+  },
+  {
+    rank: '⑤ 同花', name: '', desc: '同花色任意五张',
+    cards: [
+      { v: 'A♦', red: true }, { v: 'J♦', red: true }, { v: '8♦', red: true },
+      { v: '5♦', red: true }, { v: '2♦', red: true }
+    ]
+  },
+  {
+    rank: '⑥ 顺子', name: '', desc: '连续五张不同花',
+    cards: [
+      { v: '9♠', red: false }, { v: '8♥', red: true }, { v: '7♦', red: true },
+      { v: '6♣', red: false }, { v: '5♠', red: false }
+    ]
+  },
+  {
+    rank: '⑦ 三条', name: '', desc: '三张相同点数',
+    cards: [
+      { v: '7♠', red: false }, { v: '7♥', red: true }, { v: '7♦', red: true },
+      { v: 'K♠', red: false }, { v: '2♣', red: false }
+    ]
+  },
+  {
+    rank: '⑧ 两对', name: '', desc: '两个不同的对子',
+    cards: [
+      { v: 'A♠', red: false }, { v: 'A♥', red: true }, { v: '6♦', red: true },
+      { v: '6♣', red: false }, { v: 'J♠', red: false }
+    ]
+  },
+  {
+    rank: '⑨ 一对', name: '', desc: '两张相同点数',
+    cards: [
+      { v: '10♠', red: false }, { v: '10♣', red: false }, { v: 'A♦', red: true },
+      { v: '7♥', red: true }, { v: '3♠', red: false }
+    ]
+  },
+  {
+    rank: '⑩ 高牌', name: '', desc: '无以上组合，最大单张',
+    cards: [
+      { v: 'A♠', red: false }, { v: 'J♦', red: true }, { v: '9♣', red: false },
+      { v: '5♥', red: true }, { v: '2♠', red: false }
+    ]
+  }
+]
 
 // ====== 计算属性 ======
 const me = computed(() => gameState.value.players.find(p => p.id === store.player?.id))
@@ -2124,6 +2236,87 @@ function isRedCard(card) {
 .final-avatar { font-size: 22px; }
 .final-name { flex: 1; font-size: 14px; color: rgba(255,255,255,0.9); }
 .final-chips { font-size: 14px; font-weight: 700; }
+
+/* ===== 牌型规则面板 ===== */
+.rules-panel {
+  padding: 20px 16px 24px;
+  color: #fff;
+}
+
+.rules-title {
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 2px;
+}
+
+.rules-subtitle {
+  font-size: 12px;
+  color: rgba(255,255,255,0.4);
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+.rule-row {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  margin-bottom: 8px;
+}
+
+.rule-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.rule-rank {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffd700;
+  white-space: nowrap;
+}
+
+.rule-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rule-desc {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  margin-left: auto;
+}
+
+.rule-cards {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rule-card {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+
+.rule-card.red { color: #e74c3c; }
+.rule-card.black { color: #1a1a1a; }
+
+.rules-note {
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
+  text-align: center;
+  margin-top: 10px;
+}
 
 /* ===== 操作日志 ===== */
 .action-log {
