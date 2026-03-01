@@ -25,6 +25,19 @@ const io = new Server(server, {
 app.use(cors())
 app.use(express.json())
 
+// ====== 静态文件（生产环境托管前端 dist）======
+const path = require('path')
+const fs = require('fs')
+const distPath = path.join(__dirname, '../frontend/dist')
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath))
+  // SPA fallback：所有非 /api 和非 /socket.io 路由都返回 index.html
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) return next()
+    res.sendFile(path.join(distPath, 'index.html'))
+  })
+}
+
 // ====== 内存存储 ======
 // players: Map<playerId, playerData>
 const players = new Map()
