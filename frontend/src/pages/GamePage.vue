@@ -100,7 +100,7 @@
             <div class="opp-name">{{ p.nickname }}</div>
             <!-- 当前下注 -->
             <div v-if="p.currentBet > 0 && p.status !== 'folded'" class="opp-bet">
-              <span class="chip-icon"></span>
+              <img src="/chip.png" class="chip-icon" />
               <span class="bet-amount">{{ p.currentBet }}</span>
             </div>
           </div>
@@ -144,11 +144,11 @@
           <!-- 底池 -->
           <div class="pot-display" v-if="gameState.pot > 0">
             <span class="pot-display-label">底池</span>
-            <span class="pot-display-value"><span class="chip-icon"></span>{{ gameState.pot.toLocaleString() }}</span>
+<span class="pot-display-value"><img src="/chip.png" class="chip-icon" />{{ gameState.pot.toLocaleString() }}</span>
           </div>
 
           <!-- 中央牌堆 -->
-          <div class="deck-pile" ref="deckRef">
+          <div class="deck-pile" ref="deckRef" :class="{ 'deck-hide': !deckVisible }">
             <div v-for="n in 4" :key="n" class="deck-card" :style="{ '--i': n }"></div>
             <div class="deck-top">
               <div class="deck-back-pattern"></div>
@@ -177,6 +177,10 @@
                 <template v-if="slot.card">
                   <div class="card-rank">{{ getCardRank(slot.card) }}</div>
                   <div class="card-suit">{{ getCardSuit(slot.card) }}</div>
+                  <div class="comm-card-corner top-left">
+                    <span>{{ getCardRank(slot.card) }}</span>
+                    <span>{{ getCardSuit(slot.card) }}</span>
+                  </div>
                 </template>
               </div>
             </div>
@@ -205,7 +209,7 @@
       <div v-if="actionToast" class="action-toast" :class="'toast-' + actionToast.type">
         <span class="toast-name">{{ actionToast.name }}</span>
         <span class="toast-verb">{{ ACTION_NAMES[actionToast.type] || actionToast.type }}</span>
-        <span v-if="actionToast.amount > 0" class="toast-amount"><span class="chip-icon chip-icon-lg"></span>{{ actionToast.amount.toLocaleString() }}</span>
+<span v-if="actionToast.amount > 0" class="toast-amount"><img src="/chip.png" class="chip-icon chip-icon-lg" />{{ actionToast.amount.toLocaleString() }}</span>
       </div>
     </transition>
 
@@ -230,6 +234,11 @@
 
     <!-- ===== 我的区域 ===== -->
     <div class="my-area" ref="myAreaRef">
+      <!-- 我的已下注（底牌上方） -->
+      <div class="my-bet-above" v-if="myCurrentBet > 0">
+        <img src="/chip.png" class="chip-icon chip-icon-lg" />
+        <span class="my-bet-above-val">{{ myCurrentBet }}</span>
+      </div>
       <!-- 我的手牌区域（含左侧余额） -->
       <div class="my-cards-row">
         <div class="my-chips-left">
@@ -287,10 +296,6 @@
           </div>
           <div class="my-text">
             <span class="my-name">{{ store.player?.nickname }}</span>
-            <div class="my-bet-area" v-if="myCurrentBet > 0">
-              <span class="my-bet-label">已注</span>
-              <span class="my-bet-val gold">{{ myCurrentBet }}</span>
-            </div>
           </div>
         </div>
         <!-- 倒计时（我的回合） -->
@@ -301,11 +306,9 @@
     </div>
 
     <!-- ===== 操作面板 ===== -->
-    <transition name="slide-up">
       <div
         class="action-panel"
-        :class="{ 'action-panel-disabled': !isMyTurn }"
-        v-if="isInGame && gameState.phase !== 'showdown' && gameState.phase !== 'waiting'"
+        :class="{ 'action-panel-disabled': !isMyTurn || !isInGame || gameState.phase === 'showdown' || gameState.phase === 'waiting' }"
       >
         <div class="action-panel-inner">
 
@@ -348,7 +351,6 @@
 
         </div>
       </div>
-    </transition>
 
     <!-- ===== 筹码选择弹窗 ===== -->
     <van-popup
@@ -795,6 +797,7 @@ const flyingCards = ref([])                   // 飞行牌列表
 const cardRevealed = ref([false, false])       // 我的手牌翻面状态
 const dealAnimKey = ref(0)                    // 手牌动画 key（触发 CSS animation 重播）
 const cardsVisible = ref(true)                // 是否显示真实手牌（发牌动画期间隐藏）
+const deckVisible = ref(true)                 // 牌堆是否可见（发完牌后隐藏）
 const deckCardCount = computed(() => {
   // 52 - 已发手牌 - 公共牌
   const players = gameState.value.players || []
@@ -817,6 +820,7 @@ async function triggerDealAnimation() {
   dealAnimKey.value++
   cardRevealed.value = [false, false]
   cardsVisible.value = false          // 先隐藏真实手牌槽
+  deckVisible.value = true            // 重新显示牌堆
 
   // 重置公共牌 slots（5张背面占位，发牌动画飞完后才显示）
   communitySlots.value = []
@@ -961,6 +965,8 @@ async function triggerDealAnimation() {
   const commArriveDelay = (commStartDelay + 4 * 0.09 + 0.42) * 1000
   setTimeout(() => {
     flyingCards.value = []
+    // 发完牌后，牌堆淡出消失
+    deckVisible.value = false
     // 建5个背面 slot（card 先取 _hiddenCommunityCards，但不翻面）
     const hidden = gameState.value._hiddenCommunityCards || []
     communitySlots.value = hidden.map(card => ({ card, revealed: false }))
@@ -1459,22 +1465,20 @@ function isRedCard(card) {
 .bet-chip { font-size: 12px; }
 .bet-amount { color: #f5c842; font-size: 12px; font-weight: 800; }
 
-/* 金色筹码圆形图标 */
+/* 筹码图标 */
 .chip-icon {
   display: inline-block;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #ffe066, #f5c842 50%, #c8861a);
-  border: 1.5px solid rgba(255,255,255,0.45);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.3);
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
   vertical-align: middle;
   flex-shrink: 0;
+  margin-right: 2px;
 }
 
 .chip-icon-lg {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
 }
 
 /* ===== 行动 Toast ===== */
@@ -1556,6 +1560,7 @@ function isRedCard(card) {
   margin: 0 auto 8px;
   cursor: default;
   flex-shrink: 0;
+  transition: opacity 0.6s ease, transform 0.6s ease;
 }
 
 .deck-card {
@@ -1605,6 +1610,13 @@ function isRedCard(card) {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.5px;
+}
+
+/* 牌堆消失动画 */
+.deck-hide {
+  opacity: 0;
+  transform: scale(0.5);
+  pointer-events: none;
 }
 
 /* ===== 飞行牌（全屏绝对定位） ===== */
@@ -1839,6 +1851,23 @@ function isRedCard(card) {
 
 .comm-front.card-red .card-rank,
 .comm-front.card-red .card-suit {
+  color: #e74c3c;
+}
+
+/* 公共牌左上角角标 */
+.comm-card-corner {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  display: flex;
+  flex-direction: column;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #2c3e50;
+}
+
+.comm-front.card-red .comm-card-corner {
   color: #e74c3c;
 }
 
@@ -2151,13 +2180,7 @@ function isRedCard(card) {
 }
 
 .my-bet-area {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(0,0,0,0.55);
-  border: 1px solid rgba(245,200,66,0.35);
-  border-radius: 10px;
-  padding: 3px 10px;
+  display: none; /* 已移至底牌上方，保留以免残留引用 */
 }
 
 .my-bet-label {
@@ -2169,6 +2192,29 @@ function isRedCard(card) {
   font-size: 14px;
   font-weight: 800;
   color: #f5c842;
+}
+
+/* 底牌上方的已下注显示 */
+.my-bet-above {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-bottom: 6px;
+  animation: betAboveFadeIn 0.3s ease both;
+}
+
+.my-bet-above-val {
+  font-size: 18px;
+  font-weight: 800;
+  color: #f5c842;
+  text-shadow: 0 1px 6px rgba(245, 200, 66, 0.5);
+  letter-spacing: 0.5px;
+}
+
+@keyframes betAboveFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .my-timer {
