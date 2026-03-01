@@ -708,6 +708,21 @@ onMounted(() => {
     roundResult.value = result
     showResult.value = true
     store.setGameState(null)
+
+    // 兜底：30秒后若仍在结算弹窗（没人点"下一局"），自动跳回房间
+    autoBackTimer = setTimeout(() => {
+      if (showResult.value) {
+        showResult.value = false
+        router.replace(`/room/${roomId}`)
+      }
+    }, 30000)
+  })
+
+  // 所有玩家回房间（任意一人点"下一局"即触发）
+  socket.on('room:back', ({ roomId: rid }) => {
+    clearTimeout(autoBackTimer)
+    showResult.value = false
+    router.replace(`/room/${rid || roomId}`)
   })
 
   // 玩家断线通知
@@ -748,11 +763,13 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopTimer()
+  clearTimeout(autoBackTimer)
   const socket = getSocket()
   socket.off('game:state')
   socket.off('game:start')
   socket.off('player:action:log')
   socket.off('game:result')
+  socket.off('room:back')
   socket.off('player:disconnected')
   socket.off('player:auth:ok')
   socket.off('error')
@@ -787,6 +804,7 @@ function doAction(type, amount) {
 // ====== 结算 ======
 const showResult = ref(false)
 const roundResult = ref(null)
+let autoBackTimer = null
 
 function nextRound() {
   showResult.value = false

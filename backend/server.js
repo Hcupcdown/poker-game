@@ -322,7 +322,10 @@ io.on('connection', (socket) => {
 
     if (room.status === 'finished' || room.status === 'waiting') {
       room.resetToWaiting()
-      io.to(room.id).emit('room:update', { room: room.getRoomInfo() })
+      // 广播 room:update + room:back，通知所有玩家回到房间页
+      const roomInfo = room.getRoomInfo()
+      io.to(room.id).emit('room:update', { room: roomInfo })
+      io.to(room.id).emit('room:back', { roomId: room.id })
     }
   })
 
