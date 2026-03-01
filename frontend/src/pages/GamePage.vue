@@ -362,7 +362,7 @@
       <div class="chip-picker">
         <div class="chip-picker-header">
           <span class="chip-picker-title">选择筹码</span>
-          <span class="chip-picker-total gold">总计: {{ chipTotal }}</span>
+          <span class="chip-picker-total gold">加注到: {{ chipTotal }}</span>
         </div>
         <div class="chip-grid">
           <div
@@ -392,7 +392,7 @@
           <van-button class="chip-cancel-btn" @click="showChipPicker = false">取消</van-button>
           <van-button
             class="chip-confirm-btn"
-            :disabled="chipTotal < minRaise || chipTotal > myChips"
+            :disabled="chipTotal < minRaise || chipTotal > maxRaise"
             @click="confirmChipRaise"
           >
             确认加注 <span class="gold">{{ chipTotal }}</span>
@@ -401,8 +401,8 @@
         <div v-if="chipTotal < minRaise" class="chip-hint warn">
           最低加注 {{ minRaise }}
         </div>
-        <div v-else-if="chipTotal > myChips" class="chip-hint warn">
-          超出持有筹码 {{ myChips }}
+        <div v-else-if="chipTotal > maxRaise" class="chip-hint warn">
+          超出可用筹码 {{ maxRaise }}
         </div>
       </div>
     </van-popup>
@@ -680,23 +680,34 @@ const myChips = computed(() => me.value?.chips || 0)
 const myCurrentBet = computed(() => me.value?.currentBet || 0)
 
 // ===== 下注金额持久化显示 =====
-// 独立维护的下注显示Map，不会因后端阶段切换清零currentBet而消失
+// 独立维护的下注显示Map，显示每次操作的单次下注金额
 const displayBets = ref({})
+// 记录每个玩家上一次的 currentBet，用于计算增量（单次下注金额）
+const previousBets = ref({})
 
-// 监听 gameState 变化，更新 displayBets（只更新非零值，不主动清零）
+// 监听 gameState 变化，更新 displayBets（显示单次下注金额）
 watch(() => gameState.value.players, (players) => {
   if (!players || !players.length) return
-  const newBets = { ...displayBets.value }
+  const newDisplay = { ...displayBets.value }
+  const newPrev = { ...previousBets.value }
   players.forEach(p => {
-    if (p.currentBet > 0) {
-      newBets[p.id] = p.currentBet
+    const prevBet = newPrev[p.id] || 0
+    const curBet = p.currentBet || 0
+    if (curBet > prevBet) {
+      // currentBet 增加了，说明有新的下注操作，显示增量（单次金额）
+      newDisplay[p.id] = curBet - prevBet
+    } else if (curBet === 0 && prevBet > 0) {
+      // 后端清零了（阶段切换），保持上一次显示值不变
     }
     // 弃牌玩家清零显示
     if (p.status === 'folded') {
-      newBets[p.id] = 0
+      newDisplay[p.id] = 0
     }
+    // 更新记录的上一次 currentBet
+    newPrev[p.id] = curBet
   })
-  displayBets.value = newBets
+  displayBets.value = newDisplay
+  previousBets.value = newPrev
 }, { deep: true })
 
 // 获取某个玩家的显示下注金额
@@ -737,9 +748,13 @@ const callAmount = computed(() => {
 const canCheck = computed(() => callAmount.value <= 0)
 const minRaise = computed(() => {
   const bb = gameState.value.bigBlind || 20
-  // 最低额外加注量 = 大盲注（"再加多少"的最低值）
-  return bb
+  const maxBet = Math.max(0, ...gameState.value.players.map(p => p.currentBet || 0))
+  // 最低加注目标总额 = 当前最高下注 + 大盲注
+  return maxBet + bb
 })
+
+// 加注目标总额上限 = 玩家剩余筹码 + 本阶段已下注金额
+const maxRaise = computed(() => myChips.value + myCurrentBet.value)
 
 // 筹码选择器
 const showChipPicker = ref(false)
@@ -754,7 +769,8 @@ function openChipPicker() {
 }
 
 const chipDenominations = computed(() => {
-  const maxCount = (val) => Math.floor(myChips.value / val)
+  // 目标总额上限对应可选的最大筹码数
+  const maxCount = (val) => Math.floor(maxRaise.value / val)
   return [10, 20, 50, 100].map(value => ({
     value,
     columns: [Array.from({ length: maxCount(value) + 1 }, (_, i) => ({ text: String(i), value: i }))]
@@ -771,7 +787,7 @@ function onChipCountChange(denomination, { selectedValues }) {
 }
 
 function confirmChipRaise() {
-  if (chipTotal.value < minRaise.value || chipTotal.value > myChips.value) return
+  if (chipTotal.value < minRaise.value || chipTotal.value > maxRaise.value) return
   showChipPicker.value = false
   doAction('raise', chipTotal.value)
   // 重置计数
@@ -1048,6 +1064,7 @@ onMounted(() => {
     showFinalResult.value = false
     nextRoundSent.value = false
     displayBets.value = {} // 新局开始，清零下注显示
+    previousBets.value = {} // 清零上一次下注记录
     gameState.value = gs
     store.setGameState(gs)
     communitySlots.value = []
@@ -1120,6 +1137,7 @@ onMounted(() => {
     nextRoundReady.value = 0
     nextRoundTotal.value = 0
     displayBets.value = {} // 新局开始，清零下注显示
+    previousBets.value = {} // 清零上一次下注记录
     gameState.value = gs
     store.setGameState(gs)
     // 重置公共牌 slots

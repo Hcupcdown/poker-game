@@ -297,9 +297,8 @@ class GameRoom {
         break
 
       case 'raise': {
-        // amount 代表「再加多少」，即在当前最高下注基础上额外加的金额
-        const extraAmount = safeAmount(amount)
-        const raiseTotal = Math.min(maxBet + extraAmount, player.chips + player.currentBet)
+        // amount 代表加注的目标总额（即玩家希望本阶段累计下注达到的金额）
+        const raiseTotal = Math.min(safeAmount(amount), player.chips + player.currentBet)
         if (raiseTotal <= maxBet) throw new Error('加注金额必须大于当前最高下注')
         this._doRaise(player, raiseTotal)
         // 加注后重置其他已行动玩家的 hasActed，让他们有机会再次行动
