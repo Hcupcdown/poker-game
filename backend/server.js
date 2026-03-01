@@ -372,9 +372,34 @@ io.on('connection', (socket) => {
       readyIds: [...room.nextRoundReady]
     })
 
-    // 全员就绪，直接开新一局
+    // 全员就绪，检查是否有人破产
     if (ready >= total) {
       room.nextRoundReady = null
+
+      // 检查是否有人筹码耗尽
+      const bustedPlayers = room.players.filter(p => p.chips <= 0)
+      if (bustedPlayers.length > 0) {
+        // 有人破产，触发最终结算
+        const finalPlayers = room.players.map(p => ({
+          id: p.id,
+          nickname: p.nickname,
+          avatar: p.avatar,
+          chips: p.chips
+        })).sort((a, b) => b.chips - a.chips)
+
+        room.clearActionTimer && room.clearActionTimer()
+        room.status = 'waiting'
+        room.gameState = null
+
+        io.to(room.id).emit('game:final_result', {
+          players: finalPlayers,
+          reason: `${bustedPlayers.map(p => p.nickname).join('、')} 筹码耗尽，游戏结束`
+        })
+        io.to(room.id).emit('room:update', { room: room.getRoomInfo() })
+        console.log(`[Game] 房间 ${room.id} 有人破产，游戏自动结束`)
+        return
+      }
+
       try {
         room.startGame({ forceNextRound: true })
         console.log(`[Game] 房间 ${room.id} 开始新一局`)

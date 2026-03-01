@@ -680,13 +680,21 @@ class GameRoom {
     gs.phase = 'showdown'
     gs.currentPlayerId = null
 
-    // 先广播最终游戏状态（含手牌揭示）
+    // 检查是否有人筹码耗尽（破产）
+    const bustedPlayers = this.players.filter(p => p.chips <= 0)
+    const gameOver = bustedPlayers.length > 0
+    roundResult.gameOver = gameOver
+    if (gameOver) {
+      roundResult.bustedNames = bustedPlayers.map(p => p.nickname)
+    }
+
+    // 广播最终游戏状态（含手牌揭示和 gameOver 信息）
     this._broadcastShowdown(roundResult)
 
-    // 标记游戏结束
+    // 标记游戏结束（等待确认下一轮）
     this.status = 'finished'
 
-    console.log(`[Game] 房间 ${this.id} 本局结算，赢家: ${winners.join(',')}，底池: ${totalPot}`)
+    console.log(`[Game] 房间 ${this.id} 本局结算，赢家: ${winners.join(',')}，底池: ${totalPot}${gameOver ? '，有人破产，游戏结束' : ''}`)
   }
 
   // ============================

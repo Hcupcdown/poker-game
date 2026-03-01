@@ -405,17 +405,35 @@
           </div>
         </div>
 
-        <!-- 下一局按钮 + 等待进度 -->
-        <van-button
-          block round class="btn-green"
-          style="margin-top: 16px;"
-          :disabled="nextRoundSent"
-          @click="nextRound"
-        >
-          {{ nextRoundSent ? `等待其他玩家… (${nextRoundReady}/${nextRoundTotal})` : '下一局 ▶' }}
-        </van-button>
-        <div v-if="nextRoundSent" class="ready-hint">
-          {{ nextRoundReady }}/{{ nextRoundTotal }} 人已准备
+        <!-- 有人破产：显示游戏结束提示 -->
+        <div v-if="roundResult.gameOver" class="game-over-hint">
+          <div style="color: #e74c3c; font-weight: bold; margin-bottom: 8px;">⚠️ {{ roundResult.bustedNames?.join('、') }} 筹码耗尽</div>
+          <van-button
+            block round class="btn-green"
+            style="margin-top: 8px;"
+            :disabled="nextRoundSent"
+            @click="nextRound"
+          >
+            {{ nextRoundSent ? `等待其他玩家确认… (${nextRoundReady}/${nextRoundTotal})` : '确认结算' }}
+          </van-button>
+          <div v-if="nextRoundSent" class="ready-hint">
+            {{ nextRoundReady }}/{{ nextRoundTotal }} 人已确认
+          </div>
+        </div>
+
+        <!-- 正常：下一局按钮 + 等待进度 -->
+        <div v-else>
+          <van-button
+            block round class="btn-green"
+            style="margin-top: 16px;"
+            :disabled="nextRoundSent"
+            @click="nextRound"
+          >
+            {{ nextRoundSent ? `等待其他玩家… (${nextRoundReady}/${nextRoundTotal})` : '下一局 ▶' }}
+          </van-button>
+          <div v-if="nextRoundSent" class="ready-hint">
+            {{ nextRoundReady }}/{{ nextRoundTotal }} 人已准备
+          </div>
         </div>
       </div>
     </van-popup>
@@ -430,6 +448,7 @@
     >
       <div class="result-popup">
         <div class="result-title">🏆 最终结算</div>
+        <div v-if="finalReason" class="final-reason" style="text-align: center; color: #f5c842; font-size: 13px; margin-bottom: 12px;">{{ finalReason }}</div>
         <div class="final-players">
           <div
             v-for="(p, i) in finalPlayers"
@@ -501,6 +520,7 @@ const isOwner = computed(() => store.player?.id === store.room?.ownerId)
 const showEndConfirm = ref(false)
 const showFinalResult = ref(false)
 const finalPlayers = ref([])
+const finalReason = ref('')
 
 function endGame() {
   getSocket().emit('game:end')
@@ -915,11 +935,12 @@ onMounted(() => {
     }, 60000)
   })
 
-  // 最终结算（房主结束游戏）
-  socket.on('game:final_result', ({ players }) => {
+  // 最终结算（房主结束游戏 / 有人破产）
+  socket.on('game:final_result', ({ players, reason }) => {
     clearTimeout(autoBackTimer)
     showResult.value = false
     finalPlayers.value = players
+    finalReason.value = reason || ''
     showFinalResult.value = true
     store.setGameState(null)
   })
