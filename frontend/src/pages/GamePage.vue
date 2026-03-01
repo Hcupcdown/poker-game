@@ -338,7 +338,7 @@
             <van-button
               class="btn-green action-btn"
               :disabled="!isMyTurn"
-              @click="showChipPicker = true"
+              @click="openChipPicker"
             >
               <div class="btn-inner">
                 <span class="btn-text">加注</span>
@@ -369,11 +369,12 @@
             class="chip-col"
           >
             <!-- 筹码图标 -->
-            <div class="chip-token" :class="'chip-' + chip.value">
-              <span class="chip-face">{{ chip.value }}</span>
+            <div class="chip-token">
+              <img :src="'/svg/' + chip.value + '.svg'" class="chip-svg" :alt="chip.value" />
             </div>
             <!-- 滚轮选择器 -->
             <van-picker
+              :key="pickerKey + '-' + chip.value"
               :columns="chip.columns"
               :visible-option-num="3"
               :option-height="36"
@@ -689,15 +690,21 @@ const callAmount = computed(() => {
 const canCheck = computed(() => callAmount.value <= 0)
 const minRaise = computed(() => {
   const bb = gameState.value.bigBlind || 20
-  const maxBet = Math.max(0, ...gameState.value.players.map(p => p.currentBet || 0))
-  // 最小加注 = 当前最高下注 + 大盲注（标准德扑规则）
-  // 但不能小于大盲注的2倍（首次加注的最低标准）
-  return Math.max(maxBet + bb, bb * 2)
+  // 最低额外加注量 = 大盲注（"再加多少"的最低值）
+  return bb
 })
 
 // 筹码选择器
 const showChipPicker = ref(false)
 const chipCounts = ref({ 10: 0, 20: 0, 50: 0, 100: 0 })
+const pickerKey = ref(0)
+
+function openChipPicker() {
+  // 每次打开时清零筹码计数并刷新滚轮
+  chipCounts.value = { 10: 0, 20: 0, 50: 0, 100: 0 }
+  pickerKey.value++
+  showChipPicker.value = true
+}
 
 const chipDenominations = computed(() => {
   const maxCount = (val) => Math.floor(myChips.value / val)
@@ -1140,7 +1147,7 @@ function doAction(type, amount) {
     fold: `${store.player?.nickname} 弃牌`,
     check: `${store.player?.nickname} 看牌`,
     call: `${store.player?.nickname} 跟注 ${callAmount.value}`,
-    raise: `${store.player?.nickname} 加注到 ${amount}`
+    raise: `${store.player?.nickname} 加注 ${amount}`
   }
   store.addLog(actionMsg[type] || type)
   showToast({ message: ACTION_NAMES[type], duration: 800, position: 'middle' })
@@ -1929,14 +1936,18 @@ function isRedCard(card) {
 }
 
 .my-cards-row {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
   margin-bottom: 10px;
 }
 
 .my-chips-left {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1944,6 +1955,7 @@ function isRedCard(card) {
   border-radius: 10px;
   padding: 6px 10px;
   min-width: 54px;
+  z-index: 1;
 }
 .my-chips-left .chips-icon {
   font-size: 18px;
@@ -2234,40 +2246,16 @@ function isRedCard(card) {
 .chip-token {
   width: 56px;
   height: 56px;
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 900;
-  font-size: 16px;
-  color: #fff;
-  border: 3px solid rgba(255,255,255,0.3);
-  box-shadow: 0 3px 8px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.2);
-  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
-.chip-10 {
-  background: linear-gradient(135deg, #4a90d9, #357abd);
-  border-color: rgba(100,160,240,0.5);
-}
-
-.chip-20 {
-  background: linear-gradient(135deg, #e74c3c, #c0392b);
-  border-color: rgba(240,100,100,0.5);
-}
-
-.chip-50 {
-  background: linear-gradient(135deg, #27ae60, #1e8449);
-  border-color: rgba(80,200,120,0.5);
-}
-
-.chip-100 {
-  background: linear-gradient(135deg, #2c3e50, #1a252f);
-  border-color: rgba(200,180,100,0.5);
-}
-
-.chip-face {
+.chip-svg {
+  width: 56px;
+  height: 56px;
   pointer-events: none;
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4));
 }
 
 /* 滚轮选择器样式覆盖 */

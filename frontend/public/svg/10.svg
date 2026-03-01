@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      
+    </filter>
+    
+    <g id="stripes">
+      <rect x="-15" y="-120" width="30" height="40" fill="white"/>
+      <rect x="-15" y="80" width="30" height="40" fill="white"/>
+      <rect x="-120" y="-15" width="40" height="30" fill="white"/>
+      <rect x="80" y="-15" width="40" height="30" fill="white"/>
+      <g transform="rotate(45)">
+        <rect x="-15" y="-120" width="30" height="40" fill="white"/>
+        <rect x="-15" y="80" width="30" height="40" fill="white"/>
+        <rect x="-120" y="-15" width="40" height="30" fill="white"/>
+        <rect x="80" y="-15" width="40" height="30" fill="white"/>
+      </g>
+    </g>
+  </defs>
+
+  <g transform="translate(150, 150)" filter="url(#shadow)">
+    
+    <circle r="120" fill="#1565C0" stroke="#0D47A1" stroke-width="2"/>
+    
+    <use href="#stripes"/>
+    
+    <circle cx="0" cy="0" r="75" fill="none" stroke="white" stroke-width="4" stroke-dasharray="10,8" opacity="0.8"/>
+    
+    <circle cx="0" cy="0" r="65" fill="#FFF8E1"/>
+    
+    <text y="22" font-family="Arial Black, sans-serif" font-weight="900" font-size="60" text-anchor="middle" fill="#1565C0">10</text>
+  </g>
+</svg>

@@ -297,7 +297,9 @@ class GameRoom {
         break
 
       case 'raise': {
-        const raiseTotal = Math.min(safeAmount(amount), player.chips + player.currentBet)
+        // amount 代表「再加多少」，即在当前最高下注基础上额外加的金额
+        const extraAmount = safeAmount(amount)
+        const raiseTotal = Math.min(maxBet + extraAmount, player.chips + player.currentBet)
         if (raiseTotal <= maxBet) throw new Error('加注金额必须大于当前最高下注')
         this._doRaise(player, raiseTotal)
         // 加注后重置其他已行动玩家的 hasActed，让他们有机会再次行动
@@ -341,6 +343,10 @@ class GameRoom {
     // 日志广播
     const actionDesc = this._getActionDesc(player, type, actualAmount)
     this.io.to(this.id).emit('player:action:log', { msg: actionDesc })
+
+    // 先广播一次当前状态，确保前端能看到本次行动的下注金额
+    // （如果紧接着触发阶段转换，currentBet 会被清零，前端将看不到这一轮的下注）
+    this._broadcastGameState()
 
     this._checkRoundEnd()
   }
@@ -468,32 +474,36 @@ class GameRoom {
     }
 
     const nextPhase = PHASES[currentIdx + 1]
-    gs.phase = nextPhase
 
-    // 重置本轮下注和行动标记
-    gs.players.forEach(p => {
-      if (p.status === 'active') {
+    // 延迟 600ms 再切换到新阶段，让前端有时间展示上一轮的下注信息
+    setTimeout(() => {
+      gs.phase = nextPhase
+
+      // 重置本轮下注和行动标记（所有玩家的 currentBet 都要清零，避免前端显示残留）
+      gs.players.forEach(p => {
         p.currentBet = 0
-        p.hasActed = false
+        if (p.status === 'active') {
+          p.hasActed = false
+        }
+      })
+
+      // 翻公共牌
+      const hidden = gs._hiddenCommunityCards || []
+      if (nextPhase === 'flop') {
+        gs.communityCards = hidden.slice(0, 3)
+      } else if (nextPhase === 'turn') {
+        gs.communityCards = hidden.slice(0, 4)
+      } else if (nextPhase === 'river') {
+        gs.communityCards = hidden.slice(0, 5)
+      } else if (nextPhase === 'showdown') {
+        this._settleGame(true)
+        return
       }
-    })
 
-    // 翻公共牌
-    const hidden = gs._hiddenCommunityCards || []
-    if (nextPhase === 'flop') {
-      gs.communityCards = hidden.slice(0, 3)
-    } else if (nextPhase === 'turn') {
-      gs.communityCards = hidden.slice(0, 4)
-    } else if (nextPhase === 'river') {
-      gs.communityCards = hidden.slice(0, 5)
-    } else if (nextPhase === 'showdown') {
-      this._settleGame(true)
-      return
-    }
-
-    this._setFirstActivePlayerAfterDealer()
-    this._broadcastGameState()
-    this._startActionTimer()
+      this._setFirstActivePlayerAfterDealer()
+      this._broadcastGameState()
+      this._startActionTimer()
+    }, 600)
   }
 
   _dealRemainingCommunityCards() {
