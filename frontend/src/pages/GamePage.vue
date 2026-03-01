@@ -98,13 +98,11 @@
           <!-- 玩家信息 -->
           <div class="opp-info">
             <div class="opp-name">{{ p.nickname }}</div>
-            <div class="opp-chips">{{ formatChips(p.chips) }}</div>
-          </div>
-
-          <!-- 当前下注 -->
-          <div v-if="p.currentBet > 0 && p.status !== 'folded'" class="opp-bet">
-            <span class="chip-icon"></span>
-            <span class="bet-amount">{{ p.currentBet }}</span>
+            <!-- 当前下注 -->
+            <div v-if="p.currentBet > 0 && p.status !== 'folded'" class="opp-bet">
+              <span class="chip-icon"></span>
+              <span class="bet-amount">{{ p.currentBet }}</span>
+            </div>
           </div>
 
           <!-- 弃牌遮罩 -->
@@ -232,8 +230,13 @@
 
     <!-- ===== 我的区域 ===== -->
     <div class="my-area" ref="myAreaRef">
-      <!-- 我的手牌 -->
-      <div class="my-cards" ref="myCardsRef">
+      <!-- 我的手牌区域（含左侧余额） -->
+      <div class="my-cards-row">
+        <div class="my-chips-left">
+          <span class="chips-icon">💰</span>
+          <span class="chips-val">{{ myChips.toLocaleString() }}</span>
+        </div>
+        <div class="my-cards" ref="myCardsRef">
         <!-- 我的手牌（始终渲染 wrap 以便发牌动画定位；cardsVisible 控制内容显隐） -->
         <div
           v-for="(card, i) in (myCards.length ? myCards : ['', ''])"
@@ -270,6 +273,7 @@
           <div v-for="n in 2" :key="'ph'+n" class="my-card-placeholder"></div>
         </template>
       </div>
+      </div><!-- /my-cards-row -->
 
       <!-- 我的信息栏 -->
       <div class="my-info-bar">
@@ -283,12 +287,11 @@
           </div>
           <div class="my-text">
             <span class="my-name">{{ store.player?.nickname }}</span>
-            <span class="my-chips">💰 {{ myChips.toLocaleString() }}</span>
+            <div class="my-bet-area" v-if="myCurrentBet > 0">
+              <span class="my-bet-label">已注</span>
+              <span class="my-bet-val gold">{{ myCurrentBet }}</span>
+            </div>
           </div>
-        </div>
-        <div class="my-bet-area" v-if="myCurrentBet > 0">
-          <span class="my-bet-label">已注</span>
-          <span class="my-bet-val gold">{{ myCurrentBet }}</span>
         </div>
         <!-- 倒计时（我的回合） -->
         <div v-if="isMyTurn" class="my-timer">
@@ -1925,11 +1928,39 @@ function isRedCard(card) {
   flex-shrink: 0;
 }
 
+.my-cards-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.my-chips-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(0,0,0,0.45);
+  border-radius: 10px;
+  padding: 6px 10px;
+  min-width: 54px;
+}
+.my-chips-left .chips-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+.my-chips-left .chips-val {
+  color: #ffd700;
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 2px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
 .my-cards {
   display: flex;
   gap: 14px;
   justify-content: center;
-  margin-bottom: 10px;
 }
 
 /* ===== 手牌发牌飞入 ===== */

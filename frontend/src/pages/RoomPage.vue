@@ -61,7 +61,8 @@
                 <div class="player-chips">💰 {{ p.chips?.toLocaleString() }}</div>
               </div>
               <div class="player-ready">
-                <span class="ready-icon">{{ p.id === store.player?.id ? '🟢' : '🟡' }}</span>
+                <span class="ready-icon" v-if="p.connected !== false">{{ p.id === store.player?.id ? '🟢' : '🟡' }}</span>
+                <span class="offline-icon" v-else>🔴</span>
               </div>
             </div>
           </transition-group>
@@ -100,10 +101,11 @@
             </div>
           </div>
           <p class="start-hint" v-if="players.length < 2">至少需要 2 名玩家才能开始</p>
+          <p class="start-hint offline-warning" v-else-if="hasOfflinePlayers">⚠️ {{ offlineNames }} 当前不在线，无法开始</p>
           <van-button
             block round size="large"
             class="btn-green start-btn"
-            :disabled="players.length < 2"
+            :disabled="players.length < 2 || hasOfflinePlayers"
             :loading="starting"
             @click="handleStart"
           >
@@ -150,6 +152,8 @@ const room = reactive({
 const players = ref([])
 
 const isOwner = computed(() => store.player?.id === room.ownerId)
+const hasOfflinePlayers = computed(() => players.value.some(p => p.connected === false))
+const offlineNames = computed(() => players.value.filter(p => p.connected === false).map(p => p.nickname).join('、'))
 const emptySeats = computed(() => {
   const n = room.maxPlayers - players.value.length
   return Math.min(Math.max(n, 0), 3)
@@ -427,6 +431,15 @@ function handleBack() {
 
 .ready-icon {
   font-size: 18px;
+}
+
+.offline-icon {
+  font-size: 18px;
+}
+
+.offline-warning {
+  color: #e74c3c !important;
+  font-weight: 600;
 }
 
 /* 空位 */

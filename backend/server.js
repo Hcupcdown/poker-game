@@ -233,6 +233,14 @@ io.on('connection', (socket) => {
     if (room.players.length < 2) { socket.emit('error', { message: '至少需要2名玩家才能开始' }); return }
     if (room.status !== 'waiting') { socket.emit('error', { message: '游戏已经开始了' }); return }
 
+    // 检查所有玩家在线状态
+    const offlinePlayers = room.players.filter(p => p.connected === false)
+    if (offlinePlayers.length > 0) {
+      const names = offlinePlayers.map(p => p.nickname).join('、')
+      socket.emit('error', { message: `${names} 当前不在线，所有玩家在线才能开始游戏` })
+      return
+    }
+
     const roomId = room.id
     console.log(`[Game] 房间 ${roomId} 即将开始，玩家: ${room.players.map(p => p.nickname).join(', ')}`)
 
@@ -361,6 +369,18 @@ io.on('connection', (socket) => {
     // 全员就绪
     if (ready >= total) {
       room.nextRoundReady = null
+
+      // 检查所有玩家在线状态
+      const offlinePlayers = room.players.filter(p => p.connected === false)
+      if (offlinePlayers.length > 0) {
+        const names = offlinePlayers.map(p => p.nickname).join('、')
+        io.to(room.id).emit('error', { message: `${names} 当前不在线，等待所有玩家上线后才能继续` })
+        // 重置就绪状态，等待离线玩家重连后重新确认
+        room.nextRoundReady = new Set()
+        room.status = 'round_end'
+        io.to(room.id).emit('game:next_round_ready', { ready: 0, total, readyIds: [] })
+        return
+      }
 
       // 检查是否有人筹码耗尽 → 游戏结束
       const bustedPlayers = room.players.filter(p => p.chips <= 0)
