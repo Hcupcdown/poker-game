@@ -300,12 +300,27 @@ class GameRoom {
         const raiseTotal = Math.min(safeAmount(amount), player.chips + player.currentBet)
         if (raiseTotal <= maxBet) throw new Error('加注金额必须大于当前最高下注')
         this._doRaise(player, raiseTotal)
+        // 加注后重置其他已行动玩家的 hasActed，让他们有机会再次行动
+        gs.players.forEach(p => {
+          if (p.id !== player.id && p.status === 'active') {
+            p.hasActed = false
+          }
+        })
         break
       }
 
-      case 'allin':
+      case 'allin': {
         this._doAllIn(player)
+        // all-in 超过当前最高下注时，等同于加注，需要重置其他玩家的 hasActed
+        if (player.currentBet > maxBet) {
+          gs.players.forEach(p => {
+            if (p.id !== player.id && p.status === 'active') {
+              p.hasActed = false
+            }
+          })
+        }
         break
+      }
 
       default:
         throw new Error(`未知行动类型: ${type}`)

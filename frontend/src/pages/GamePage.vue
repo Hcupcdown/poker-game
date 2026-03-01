@@ -89,6 +89,10 @@
               class="opp-status-dot"
               :style="{ background: PLAYER_STATUS_COLORS[p.status] }"
             ></span>
+            <!-- 庄家/盲注标识 -->
+            <span v-if="p.isDealer" class="role-badge dealer-badge">D</span>
+            <span v-if="p.isSmallBlind" class="role-badge sb-badge">SB</span>
+            <span v-if="p.isBigBlind" class="role-badge bb-badge">BB</span>
           </div>
 
           <!-- 玩家信息 -->
@@ -270,7 +274,13 @@
       <!-- 我的信息栏 -->
       <div class="my-info-bar">
         <div class="my-avatar-area">
-          <span class="my-avatar">{{ store.player?.avatar }}</span>
+          <div class="my-avatar-wrap">
+            <span class="my-avatar">{{ store.player?.avatar }}</span>
+            <!-- 庄家/盲注标识 -->
+            <span v-if="me?.isDealer" class="role-badge dealer-badge">D</span>
+            <span v-if="me?.isSmallBlind" class="role-badge sb-badge">SB</span>
+            <span v-if="me?.isBigBlind" class="role-badge bb-badge">BB</span>
+          </div>
           <div class="my-text">
             <span class="my-name">{{ store.player?.nickname }}</span>
             <span class="my-chips">💰 {{ myChips.toLocaleString() }}</span>
@@ -636,7 +646,13 @@ const callAmount = computed(() => {
 })
 
 const canCheck = computed(() => callAmount.value <= 0)
-const minRaise = computed(() => (gameState.value.bigBlind || 20) * 2)
+const minRaise = computed(() => {
+  const bb = gameState.value.bigBlind || 20
+  const maxBet = Math.max(0, ...gameState.value.players.map(p => p.currentBet || 0))
+  // 最小加注 = 当前最高下注 + 大盲注（标准德扑规则）
+  // 但不能小于大盲注的2倍（首次加注的最低标准）
+  return Math.max(maxBet + bb, bb * 2)
+})
 
 // 加注滑块
 const showRaiseSlider = ref(false)
@@ -1003,6 +1019,10 @@ onMounted(() => {
 
   socket.on('error', ({ message }) => {
     showToast({ message: message || '出错了', icon: 'fail' })
+    // 如果仍是当前玩家回合（例如加注失败），恢复计时器让玩家可以重新操作
+    if (isMyTurn.value && gameState.value.phase !== 'showdown') {
+      startTimer()
+    }
   })
 
   // 主动拉取当前游戏状态
@@ -1302,6 +1322,48 @@ function isRedCard(card) {
   height: 10px;
   border-radius: 50%;
   border: 2px solid #0d4a28;
+}
+
+/* 庄家/盲注角标 */
+.role-badge {
+  position: absolute;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: #fff;
+  white-space: nowrap;
+  z-index: 5;
+  pointer-events: none;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+.dealer-badge {
+  top: -4px;
+  left: -4px;
+  background: #f5c842;
+  color: #333;
+}
+
+.sb-badge {
+  bottom: -4px;
+  left: -6px;
+  background: #3498db;
+}
+
+.bb-badge {
+  bottom: -4px;
+  left: -6px;
+  background: #e74c3c;
+}
+
+/* 我的头像包裹（用于定位角标） */
+.my-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .opp-info {
