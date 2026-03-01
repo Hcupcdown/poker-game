@@ -299,42 +299,22 @@
 
     <!-- ===== 操作面板 ===== -->
     <transition name="slide-up">
-      <div class="action-panel" v-if="isMyTurn && gameState.phase !== 'showdown'">
+      <div
+        class="action-panel"
+        :class="{ 'action-panel-disabled': !isMyTurn }"
+        v-if="isInGame && gameState.phase !== 'showdown' && gameState.phase !== 'waiting'"
+      >
         <div class="action-panel-inner">
-
-          <!-- 加注滑块 -->
-          <div class="raise-area" v-if="showRaiseSlider">
-            <div class="raise-header">
-              <span class="raise-label">加注金额</span>
-              <span class="raise-val gold">{{ raiseAmount }}</span>
-            </div>
-            <van-slider
-              v-model="raiseAmount"
-              :min="minRaise"
-              :max="myChips"
-              :step="gameState.bigBlind || 20"
-              bar-height="6px"
-              active-color="#f5c842"
-            />
-            <div class="raise-presets">
-              <span
-                v-for="preset in raisePresets"
-                :key="preset.label"
-                class="raise-preset"
-                @click="raiseAmount = preset.amount"
-              >{{ preset.label }}</span>
-            </div>
-          </div>
 
           <!-- 操作按钮 -->
           <div class="action-buttons">
             <!-- 弃牌 -->
             <van-button
               class="btn-red action-btn"
+              :disabled="!isMyTurn"
               @click="doAction('fold')"
             >
               <div class="btn-inner">
-                <span class="btn-icon">🚫</span>
                 <span class="btn-text">弃牌</span>
               </div>
             </van-button>
@@ -342,25 +322,23 @@
             <!-- 跟注/看牌 -->
             <van-button
               class="btn-gray action-btn"
+              :disabled="!isMyTurn"
               @click="doAction(canCheck ? 'check' : 'call')"
             >
               <div class="btn-inner">
-                <span class="btn-icon">{{ canCheck ? '👀' : '✅' }}</span>
                 <span class="btn-text">{{ canCheck ? '看牌' : '跟注' }}</span>
                 <span v-if="!canCheck" class="btn-amount gold">{{ callAmount }}</span>
               </div>
             </van-button>
 
-            <!-- 加注/All-in -->
+            <!-- 加注 -->
             <van-button
               class="btn-green action-btn"
-              :class="{ active: showRaiseSlider }"
-              @click="toggleRaise"
+              :disabled="!isMyTurn"
+              @click="showChipPicker = true"
             >
               <div class="btn-inner">
-                <span class="btn-icon">{{ showRaiseSlider ? '✓' : '🔺' }}</span>
-                <span class="btn-text">{{ showRaiseSlider ? '确认加注' : '加注' }}</span>
-                <span v-if="showRaiseSlider" class="btn-amount gold">{{ raiseAmount }}</span>
+                <span class="btn-text">加注</span>
               </div>
             </van-button>
           </div>
@@ -368,6 +346,60 @@
         </div>
       </div>
     </transition>
+
+    <!-- ===== 筹码选择弹窗 ===== -->
+    <van-popup
+      v-model:show="showChipPicker"
+      round
+      position="bottom"
+      :style="{ background: '#1a1a2e', borderTop: '2px solid rgba(245,200,66,0.3)' }"
+    >
+      <div class="chip-picker">
+        <div class="chip-picker-header">
+          <span class="chip-picker-title">选择筹码</span>
+          <span class="chip-picker-total gold">总计: {{ chipTotal }}</span>
+        </div>
+        <div class="chip-grid">
+          <div
+            v-for="chip in chipDenominations"
+            :key="chip.value"
+            class="chip-col"
+          >
+            <!-- 筹码图标 -->
+            <div class="chip-token" :class="'chip-' + chip.value">
+              <span class="chip-face">{{ chip.value }}</span>
+            </div>
+            <!-- 滚轮选择器 -->
+            <van-picker
+              :columns="chip.columns"
+              :visible-option-num="3"
+              :option-height="36"
+              :show-toolbar="false"
+              @change="(val) => onChipCountChange(chip.value, val)"
+            />
+            <div class="chip-subtotal">
+              <span class="gold">{{ chip.value * chipCounts[chip.value] }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="chip-picker-footer">
+          <van-button class="chip-cancel-btn" @click="showChipPicker = false">取消</van-button>
+          <van-button
+            class="chip-confirm-btn"
+            :disabled="chipTotal < minRaise || chipTotal > myChips"
+            @click="confirmChipRaise"
+          >
+            确认加注 <span class="gold">{{ chipTotal }}</span>
+          </van-button>
+        </div>
+        <div v-if="chipTotal < minRaise" class="chip-hint warn">
+          最低加注 {{ minRaise }}
+        </div>
+        <div v-else-if="chipTotal > myChips" class="chip-hint warn">
+          超出持有筹码 {{ myChips }}
+        </div>
+      </div>
+    </van-popup>
 
     <!-- ===== 结算弹窗 ===== -->
     <van-popup
@@ -640,6 +672,12 @@ watch(lastAction, (val) => {
 
 const isMyTurn = computed(() => gameState.value.currentPlayerId === store.player?.id)
 
+// 当前玩家是否在本局游戏中（active 状态，未弃牌/未全下/未出局）
+const isInGame = computed(() => {
+  if (!me.value) return false
+  return me.value.status === 'active'
+})
+
 const callAmount = computed(() => {
   const maxBet = Math.max(0, ...gameState.value.players.map(p => p.currentBet || 0))
   return Math.min(maxBet - (myCurrentBet.value || 0), myChips.value)
@@ -654,20 +692,34 @@ const minRaise = computed(() => {
   return Math.max(maxBet + bb, bb * 2)
 })
 
-// 加注滑块
-const showRaiseSlider = ref(false)
-const raiseAmount = ref(minRaise.value)
+// 筹码选择器
+const showChipPicker = ref(false)
+const chipCounts = ref({ 10: 0, 20: 0, 50: 0, 100: 0 })
 
-const raisePresets = computed(() => {
-  const bb = gameState.value.bigBlind || 20
-  const pot = gameState.value.pot || 0
-  return [
-    { label: '2BB', amount: bb * 2 },
-    { label: '½池', amount: Math.floor(pot / 2) },
-    { label: '全池', amount: pot },
-    { label: '全押', amount: myChips.value }
-  ].filter(p => p.amount >= minRaise.value && p.amount <= myChips.value)
+const chipDenominations = computed(() => {
+  const maxCount = (val) => Math.floor(myChips.value / val)
+  return [10, 20, 50, 100].map(value => ({
+    value,
+    columns: [Array.from({ length: maxCount(value) + 1 }, (_, i) => ({ text: String(i), value: i }))]
+  }))
 })
+
+const chipTotal = computed(() => {
+  return Object.entries(chipCounts.value).reduce((sum, [val, count]) => sum + Number(val) * count, 0)
+})
+
+function onChipCountChange(denomination, { selectedValues }) {
+  // Vant 4 Picker change 事件返回 { selectedValues, selectedOptions, ... }
+  chipCounts.value[denomination] = Number(selectedValues[0])
+}
+
+function confirmChipRaise() {
+  if (chipTotal.value < minRaise.value || chipTotal.value > myChips.value) return
+  showChipPicker.value = false
+  doAction('raise', chipTotal.value)
+  // 重置计数
+  chipCounts.value = { 10: 0, 20: 0, 50: 0, 100: 0 }
+}
 
 // ====== 倒计时 ======
 const timeLeft = ref(30)
@@ -1077,17 +1129,8 @@ onUnmounted(() => {
 })
 
 // ====== 操作 ======
-function toggleRaise() {
-  if (showRaiseSlider.value) {
-    doAction('raise', raiseAmount.value)
-  } else {
-    raiseAmount.value = minRaise.value
-    showRaiseSlider.value = true
-  }
-}
-
 function doAction(type, amount) {
-  showRaiseSlider.value = false
+  showChipPicker.value = false
   stopTimer()
 
   const actionMsg = {
@@ -2120,52 +2163,154 @@ function isRedCard(card) {
   margin: 0 auto;
 }
 
-/* 加注滑块 */
-.raise-area {
-  margin-bottom: 12px;
-  padding: 12px;
-  background: rgba(255,255,255,0.05);
-  border-radius: 12px;
+/* 筹码选择器 */
+.chip-picker {
+  padding: 20px 16px;
+  color: #fff;
 }
 
-.raise-header {
+.chip-picker-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 20px;
 }
 
-.raise-label {
-  color: rgba(255,255,255,0.6);
-  font-size: 13px;
+.chip-picker-title {
+  font-size: 18px;
+  font-weight: 700;
 }
 
-.raise-val {
-  font-size: 20px;
+.chip-picker-total {
+  font-size: 16px;
   font-weight: 800;
 }
 
-.raise-presets {
+.chip-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.chip-col {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 8px;
-  margin-top: 10px;
-  flex-wrap: wrap;
 }
 
-.raise-preset {
-  padding: 4px 12px;
-  border-radius: 16px;
-  background: rgba(255,255,255,0.1);
-  color: rgba(255,255,255,0.7);
+/* 筹码图标 */
+.chip-token {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 16px;
+  color: #fff;
+  border: 3px solid rgba(255,255,255,0.3);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.2);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+.chip-10 {
+  background: linear-gradient(135deg, #4a90d9, #357abd);
+  border-color: rgba(100,160,240,0.5);
+}
+
+.chip-20 {
+  background: linear-gradient(135deg, #e74c3c, #c0392b);
+  border-color: rgba(240,100,100,0.5);
+}
+
+.chip-50 {
+  background: linear-gradient(135deg, #27ae60, #1e8449);
+  border-color: rgba(80,200,120,0.5);
+}
+
+.chip-100 {
+  background: linear-gradient(135deg, #2c3e50, #1a252f);
+  border-color: rgba(200,180,100,0.5);
+}
+
+.chip-face {
+  pointer-events: none;
+}
+
+/* 滚轮选择器样式覆盖 */
+.chip-col :deep(.van-picker) {
+  background: transparent !important;
+  width: 70px;
+}
+
+.chip-col :deep(.van-picker__mask) {
+  background-image: linear-gradient(180deg, rgba(26,26,46,0.9), rgba(26,26,46,0.4)), linear-gradient(0deg, rgba(26,26,46,0.9), rgba(26,26,46,0.4)) !important;
+}
+
+.chip-col :deep(.van-picker-column__item) {
+  color: rgba(255,255,255,0.5) !important;
+  font-size: 16px !important;
+}
+
+.chip-col :deep(.van-picker__frame) {
+  border-top: 1px solid rgba(245,200,66,0.3) !important;
+  border-bottom: 1px solid rgba(245,200,66,0.3) !important;
+}
+
+.chip-col :deep(.van-picker__toolbar) {
+  display: none !important;
+}
+
+.chip-subtotal {
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 20px;
+}
+
+/* 底部按钮 */
+.chip-picker-footer {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.chip-cancel-btn {
+  flex: 1;
+  height: 44px !important;
+  border-radius: 12px !important;
+  background: rgba(255,255,255,0.1) !important;
+  color: rgba(255,255,255,0.7) !important;
+  border: 1px solid rgba(255,255,255,0.15) !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+}
+
+.chip-confirm-btn {
+  flex: 2;
+  height: 44px !important;
+  border-radius: 12px !important;
+  background: linear-gradient(135deg, #27ae60, #2ecc71) !important;
+  color: #fff !important;
+  border: none !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+.chip-confirm-btn:disabled {
+  opacity: 0.4 !important;
+}
+
+.chip-hint {
+  text-align: center;
   font-size: 12px;
-  cursor: pointer;
-  border: 1px solid rgba(255,255,255,0.15);
-  transition: all 0.2s;
+  margin-top: 8px;
+  color: rgba(255,255,255,0.5);
 }
 
-.raise-preset:active {
-  background: rgba(245,200,66,0.2);
-  color: #f5c842;
+.chip-hint.warn {
+  color: #e74c3c;
 }
 
 /* 操作按钮行 */
@@ -2179,6 +2324,22 @@ function isRedCard(card) {
   height: 60px !important;
   border-radius: 14px !important;
   width: 100% !important;
+  transition: opacity 0.3s, filter 0.3s;
+}
+
+/* 非本回合时操作面板灰化 */
+.action-panel-disabled {
+  pointer-events: none;
+}
+
+.action-panel-disabled .action-btn {
+  opacity: 0.4 !important;
+  filter: grayscale(0.8) !important;
+}
+
+.action-panel-disabled .btn-text,
+.action-panel-disabled .btn-amount {
+  color: rgba(255,255,255,0.35) !important;
 }
 
 .btn-inner {
@@ -2188,10 +2349,7 @@ function isRedCard(card) {
   gap: 2px;
 }
 
-.btn-icon {
-  font-size: 18px;
-  line-height: 1;
-}
+
 
 .btn-text {
   font-size: 13px;
