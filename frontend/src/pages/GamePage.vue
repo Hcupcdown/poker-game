@@ -830,11 +830,17 @@ async function triggerDealAnimation() {
   }
 
   function getCommTarget(cardIndex) {
-    // 公共牌区域的占位格
+    // 优先查找已渲染的 community-card-wrap
     const wraps = document.querySelectorAll('.community-card-wrap')
-    const el = wraps[cardIndex]
+    let el = wraps[cardIndex]
     if (!el) {
-      // fallback: 牌堆下方居中
+      // 发牌动画期间 communitySlots 为空，wrap 不存在，
+      // 此时 DOM 中有5个 .community-card.placeholder 占位符，用它们来定位
+      const placeholders = document.querySelectorAll('.community-card.placeholder')
+      el = placeholders[cardIndex]
+    }
+    if (!el) {
+      // 最终 fallback: 牌堆下方居中
       return { x: deckCx, y: deckCy + 80 }
     }
     const r = el.getBoundingClientRect()
