@@ -425,6 +425,21 @@
           </div>
           <span class="winner-gain gold">+{{ roundResult.winner.gain }}</span>
         </div>
+        <!-- 公共牌展示 -->
+        <div class="result-community" v-if="roundResult.communityCards && roundResult.communityCards.length">
+          <div class="result-community-label">公共牌</div>
+          <div class="result-community-cards">
+            <span
+              v-for="(c, i) in roundResult.communityCards"
+              :key="'comm-' + i"
+              class="hand-card"
+              :class="{ red: isRedCard(c) }"
+            >
+              {{ getCardRank(c) }}{{ getCardSuit(c) }}
+            </span>
+          </div>
+        </div>
+
         <div class="result-all-hands">
           <div v-for="p in roundResult.allHands" :key="p.id" class="hand-row">
             <span class="hand-avatar">{{ p.avatar }}</span>
@@ -2121,7 +2136,8 @@ function isRedCard(card) {
 }
 
 .face-front.card-red .my-card-rank,
-.face-front.card-red .my-card-suit {
+.face-front.card-red .my-card-suit,
+.face-front.card-red .my-card-corner {
   color: #e74c3c;
 }
 
@@ -2516,6 +2532,29 @@ function isRedCard(card) {
 
 .hand-card.red {
   color: #e74c3c;
+}
+
+/* 结算弹窗中的公共牌 */
+.result-community {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+.result-community-label {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.result-community-cards {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
 }
 
 .hand-type {
