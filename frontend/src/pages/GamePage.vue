@@ -388,10 +388,10 @@
           </van-button>
         </div>
         <div v-if="chipTotal < minRaise" class="chip-hint warn">
-          最低加注 {{ minRaise }}
+          最低加注 {{ minRaise }}（含跟注 {{ callAmount }}）
         </div>
         <div v-else-if="chipTotal > maxRaise" class="chip-hint warn">
-          超出可用筹码 {{ maxRaise }}
+          超出持有筹码 {{ maxRaise }}
         </div>
       </div>
     </van-popup>
@@ -730,13 +730,12 @@ const callAmount = computed(() => {
 const canCheck = computed(() => callAmount.value <= 0)
 const minRaise = computed(() => {
   const bb = gameState.value.bigBlind || 20
-  const maxBet = Math.max(0, ...gameState.value.players.map(p => p.currentBet || 0))
-  // 最低加注目标总额 = 当前最高下注 + 大盲注
-  return maxBet + bb
+  // 最低加注金额 = 跟注金额 + 大盲注（加注必须比跟注多至少一个大盲）
+  return callAmount.value + bb
 })
 
-// 加注目标总额上限 = 玩家剩余筹码 + 本阶段已下注金额
-const maxRaise = computed(() => myChips.value + myCurrentBet.value)
+// 加注金额上限 = 玩家剩余筹码（全部投入）
+const maxRaise = computed(() => myChips.value)
 
 // 筹码选择器
 const showChipPicker = ref(false)
@@ -751,7 +750,7 @@ function openChipPicker() {
 }
 
 const chipDenominations = computed(() => {
-  // 目标总额上限对应可选的最大筹码数
+  // 加注金额上限对应可选的最大筹码数
   const maxCount = (val) => Math.floor(maxRaise.value / val)
   return [10, 20, 50, 100].map(value => ({
     value,
