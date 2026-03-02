@@ -107,8 +107,56 @@ io.on('connection', (socket) => {
     playerData.socketId = socket.id
     players.set(playerId, playerData)
 
-    socket.emit('player:auth:ok', { player: playerData })
-    console.log(`[Auth] ${playerData.nickname}(${playerId}) 认证成功, socket=${socket.id}`)
+    // 检查玩家是否在某个房间中（用于断线重连恢复）
+    let currentRoom = null
+    let currentRoomId = null
+    for (const [code, room] of rooms) {
+      const p = room.players.find(pl => pl.id === playerId)
+      if (p) {
+        currentRoomId = code
+        currentRoom = room
+        // 恢复 socket 到房间
+        p.socketId = socket.id
+        p.connected = true
+        socket.join(code)
+        break
+      }
+    }
+
+    const authResult = { player: playerData }
+    if (currentRoom && currentRoomId) {
+      authResult.inRoom = {
+        roomId: currentRoomId,
+        status: currentRoom.status // waiting | playing | round_end
+      }
+      console.log(`[Auth] ${playerData.nickname} 认证成功，当前在房间 ${currentRoomId}（${currentRoom.status}）`)
+
+      // 如果游戏进行中或轮间等待，推送游戏状态
+      if ((currentRoom.status === 'playing' || currentRoom.status === 'round_end') && currentRoom.gameState) {
+        // 清除断线缓冲计时器
+        if (currentRoom.clearDisconnectTimer) {
+          currentRoom.clearDisconnectTimer(playerId)
+        }
+        // 通知其他玩家该玩家已重连
+        socket.to(currentRoomId).emit('player:reconnected', { playerId, nickname: playerData.nickname })
+        // 延迟推送游戏状态，确保前端已就绪
+        setTimeout(() => {
+          socket.emit('game:state', currentRoom.getGameStateForPlayer(playerId))
+        }, 200)
+        // 如果该玩家是当前行动者，重新启动行动超时计时器
+        if (currentRoom.status === 'playing' && currentRoom.gameState.currentPlayerId === playerId) {
+          currentRoom._startActionTimer()
+        }
+      }
+
+      // 推送房间信息
+      socket.emit('room:update', { room: currentRoom.getRoomInfo() })
+      io.to(currentRoomId).emit('room:update', { room: currentRoom.getRoomInfo() })
+    } else {
+      console.log(`[Auth] ${playerData.nickname}(${playerId}) 认证成功, socket=${socket.id}`)
+    }
+
+    socket.emit('player:auth:ok', authResult)
   })
 
   // ----------------------------------------------------------------
@@ -175,10 +223,20 @@ io.on('connection', (socket) => {
       player.socketId = socket.id
       players.set(playerId, player)
       socket.join(normalId)
+      // 清除断线弃牌计时器（玩家已重连）
+      if (room.clearDisconnectTimer) {
+        room.clearDisconnectTimer(playerId)
+      }
       console.log(`[Room] ${player.nickname} 重连房间 ${normalId}`)
-      socket.emit('room:update', { room: room.getRoomInfo() })
+      // 通知其他玩家该玩家已重连
+      socket.to(normalId).emit('player:reconnected', { playerId, nickname: player.nickname })
+      io.to(normalId).emit('room:update', { room: room.getRoomInfo() })
       if ((room.status === 'playing' || room.status === 'round_end') && room.gameState) {
         socket.emit('game:state', room.getGameStateForPlayer(playerId))
+        // 如果该玩家是当前行动者，重新启动行动超时计时器
+        if (room.status === 'playing' && room.gameState.currentPlayerId === playerId) {
+          room._startActionTimer()
+        }
       }
       return
     }
@@ -454,6 +512,10 @@ function leaveCurrentRoom(socket, playerId) {
     const idx = room.players.findIndex(p => p.id === playerId)
     if (idx !== -1) {
       const wasOwner = room.ownerId === playerId
+      // 清除断线缓冲计时器
+      if (room.clearDisconnectTimer) {
+        room.clearDisconnectTimer(playerId)
+      }
       room.removePlayer(playerId)
       socket.leave(code)
       if (room.players.length === 0) {
@@ -483,7 +545,18 @@ function handleDisconnect(socket, playerId) {
       if (room.status === 'playing' || room.status === 'round_end') {
         io.to(code).emit('player:disconnected', { playerId, nickname: p.nickname })
         if (room.status === 'playing') {
-          room.handlePlayerDisconnect(playerId)
+          // 如果当前轮到该玩家行动，暂停行动超时计时器（让断线缓冲计时器接管）
+          if (room.gameState && room.gameState.currentPlayerId === playerId) {
+            room.clearActionTimer()
+          }
+          // 给断线玩家一个缓冲期（15秒），如果在此期间重连则不弃牌
+          room.setDisconnectTimer(playerId, () => {
+            // 缓冲期到了还没重连，自动弃牌
+            const stillDisconnected = room.players.find(pl => pl.id === playerId)
+            if (stillDisconnected && stillDisconnected.connected === false) {
+              room.handlePlayerDisconnect(playerId)
+            }
+          })
         }
         // round_end 状态下断线：检查是否所有在线玩家都已确认
         if (room.status === 'round_end' && room.nextRoundReady) {
@@ -496,7 +569,7 @@ function handleDisconnect(socket, playerId) {
           }
         }
       } else {
-        // 等待室：30s 重连机会
+        // 等待室：60s 重连机会（延长以给玩家更多重连时间）
         setTimeout(() => {
           const still = room.players.find(pl => pl.id === playerId)
           if (still && !still.connected) {
@@ -511,7 +584,7 @@ function handleDisconnect(socket, playerId) {
               io.to(code).emit('room:update', { room: room.getRoomInfo() })
             }
           }
-        }, 30000)
+        }, 60000)
       }
       break
     }

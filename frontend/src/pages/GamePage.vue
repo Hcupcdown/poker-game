@@ -669,20 +669,18 @@ const myChips = computed(() => me.value?.chips || 0)
 const myCurrentBet = computed(() => me.value?.currentBet || 0)
 
 // ===== 下注金额持久化显示 =====
-// 独立维护的下注显示Map，显示本轮累计下注金额
+// 独立维护的下注显示Map，显示本轮（整局）累计下注金额
 const displayBets = ref({})
 
-// 监听 gameState 变化，更新 displayBets（显示本轮累计下注金额）
+// 监听 gameState 变化，更新 displayBets（显示本轮整局累计下注金额）
 watch(() => gameState.value.players, (players) => {
   if (!players || !players.length) return
   const newDisplay = { ...displayBets.value }
   players.forEach(p => {
-    const curBet = p.currentBet || 0
-    if (curBet > 0) {
-      // currentBet > 0，直接显示累计值
-      newDisplay[p.id] = curBet
-    } else if (curBet === 0 && (newDisplay[p.id] || 0) > 0) {
-      // 后端清零了（阶段切换），保持上一次显示值不变
+    const total = p.totalBet || 0
+    if (total > 0) {
+      // totalBet > 0，显示整局累计下注金额
+      newDisplay[p.id] = total
     }
     // 弃牌玩家清零显示
     if (p.status === 'folded') {
@@ -1135,6 +1133,11 @@ onMounted(() => {
     store.addLog(`${nickname} 断线`)
   })
 
+  // 玩家重连通知
+  socket.on('player:reconnected', ({ nickname }) => {
+    store.addLog(`${nickname} 已重连`)
+  })
+
   socket.on('error', ({ message }) => {
     showToast({ message: message || '出错了', icon: 'fail' })
     // 如果仍是当前玩家回合（例如加注失败），恢复计时器让玩家可以重新操作
@@ -1183,6 +1186,7 @@ onUnmounted(() => {
   socket.off('game:next_round_start')
   socket.off('player:bust')
   socket.off('player:disconnected')
+  socket.off('player:reconnected')
   socket.off('player:auth:ok')
   socket.off('room:update')
   socket.off('error')

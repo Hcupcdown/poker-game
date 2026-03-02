@@ -124,7 +124,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useGameStore } from '../stores/gameStore'
 import { showToast } from 'vant'
@@ -134,14 +134,14 @@ const router = useRouter()
 const route = useRoute()
 const store = useGameStore()
 
-const roomId = route.params.id.toUpperCase()
+const roomId = computed(() => (route.params.id || '').toUpperCase())
 const starting = ref(false)
 const startChips = ref(1000)
 const chipOptions = [500, 1000, 2000, 5000]
 
 // 房间数据（由 socket 同步）
 const room = reactive({
-  id: roomId,
+  id: roomId.value,
   ownerId: '',
   smallBlind: 10,
   bigBlind: 20,
@@ -173,7 +173,7 @@ onMounted(() => {
   // 加入房间 —— 直接发 room:join，携带 player 数据
   // 后端 room:join 支持在 auth 之前处理（会用 clientPlayer 自动注册）
   const doJoinRoom = () => {
-    socket.emit('room:join', { roomId, player: store.player })
+    socket.emit('room:join', { roomId: roomId.value, player: store.player })
   }
 
   // 确保 auth 完成后再 join（auth 是异步的）
@@ -192,7 +192,7 @@ onMounted(() => {
 
   // 后端通知跳转（game:ready），立刻跳，不等 game:start
   socket.on('game:ready', ({ roomId: rid }) => {
-    router.push(`/game/${rid || roomId}`)
+    router.push(`/game/${rid || roomId.value}`)
   })
 
   // 被踢出
@@ -207,6 +207,20 @@ onMounted(() => {
   })
 })
 
+// 监听路由参数变化（组件被复用时 roomId 会变）
+watch(roomId, (newId) => {
+  if (!newId) return
+  // 更新房间初始数据
+  room.id = newId
+  room.ownerId = ''
+  room.status = 'waiting'
+  players.value = []
+  // 离开旧房间，加入新房间
+  const socket = getSocket()
+  socket.emit('room:leave')
+  socket.emit('room:join', { roomId: newId, player: store.player })
+})
+
 onUnmounted(() => {
   const socket = getSocket()
   socket.off('player:auth:ok')
@@ -217,11 +231,33 @@ onUnmounted(() => {
 })
 
 function copyCode() {
-  navigator.clipboard.writeText(roomId).then(() => {
+  const text = roomId.value
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast({ message: '房间码已复制', icon: 'success' })
+    }).catch(() => {
+      fallbackCopy(text)
+    })
+  } else {
+    fallbackCopy(text)
+  }
+}
+
+function fallbackCopy(text) {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  try {
+    document.execCommand('copy')
     showToast({ message: '房间码已复制', icon: 'success' })
-  }).catch(() => {
-    showToast(roomId)
-  })
+  } catch {
+    showToast({ message: `房间码: ${text}`, icon: 'info' })
+  }
+  document.body.removeChild(textarea)
 }
 
 function handleStart() {

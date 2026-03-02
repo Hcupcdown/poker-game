@@ -7,7 +7,6 @@
           <span class="user-avatar">{{ store.player?.avatar }}</span>
           <div class="user-text">
             <span class="user-name">{{ store.player?.nickname }}</span>
-            <span class="user-chips">💰 {{ store.player?.chips?.toLocaleString() }}</span>
           </div>
         </div>
         <van-button size="mini" class="btn-gray logout-btn" @click="handleLogout">退出</van-button>
@@ -198,11 +197,40 @@ function handleJoin() {
   }
   joining.value = true
   const socket = getSocket()
-  // 直接跳转到 RoomPage，由 RoomPage 负责发 room:join
-  store.setRoom(null)
-  saveRecentRoom(code)
-  joining.value = false
-  router.push(`/room/${code}`)
+
+  // 先向后端验证房间是否存在
+  const onRoomUpdate = ({ room }) => {
+    cleanup()
+    joining.value = false
+    if (room && room.id?.toUpperCase() === code) {
+      store.setRoom(room)
+      saveRecentRoom(code)
+      router.push(`/room/${code}`)
+    }
+  }
+
+  const onError = ({ message }) => {
+    cleanup()
+    joining.value = false
+    showToast({ message: message || '加入失败', icon: 'fail' })
+  }
+
+  const cleanup = () => {
+    socket.off('room:update', onRoomUpdate)
+    socket.off('error', onError)
+    clearTimeout(timer)
+  }
+
+  // 超时兜底
+  const timer = setTimeout(() => {
+    cleanup()
+    joining.value = false
+    showToast({ message: '加入超时，请重试', icon: 'fail' })
+  }, 5000)
+
+  socket.on('room:update', onRoomUpdate)
+  socket.on('error', onError)
+  socket.emit('room:join', { roomId: code, player: store.player })
 }
 
 function rejoinRoom(r) {

@@ -62,6 +62,9 @@ class GameRoom {
 
     // 下一轮确认集合
     this.nextRoundReady = null
+
+    // 断线缓冲计时器 { playerId: timeoutId }
+    this.disconnectTimers = {}
   }
 
   // ============================
@@ -138,6 +141,7 @@ class GameRoom {
     this.deck = null
     this.nextRoundReady = null
     this.clearActionTimer()
+    this.clearAllDisconnectTimers()
   }
 
   // ============================
@@ -353,7 +357,42 @@ class GameRoom {
   }
 
   /**
-   * 处理玩家断线
+   * 设置断线缓冲计时器
+   * 给玩家一定时间重连，超时才执行回调（弃牌）
+   */
+  setDisconnectTimer(playerId, callback, delayMs = 15000) {
+    // 先清除旧的计时器
+    this.clearDisconnectTimer(playerId)
+    this.disconnectTimers[playerId] = setTimeout(() => {
+      delete this.disconnectTimers[playerId]
+      callback()
+    }, delayMs)
+    console.log(`[Game] ${playerId} 断线缓冲开始，${delayMs / 1000}秒后自动弃牌`)
+  }
+
+  /**
+   * 清除断线缓冲计时器（玩家重连时调用）
+   */
+  clearDisconnectTimer(playerId) {
+    if (this.disconnectTimers[playerId]) {
+      clearTimeout(this.disconnectTimers[playerId])
+      delete this.disconnectTimers[playerId]
+      console.log(`[Game] ${playerId} 重连，断线缓冲已取消`)
+    }
+  }
+
+  /**
+   * 清除所有断线缓冲计时器
+   */
+  clearAllDisconnectTimers() {
+    for (const [id, timer] of Object.entries(this.disconnectTimers)) {
+      clearTimeout(timer)
+    }
+    this.disconnectTimers = {}
+  }
+
+  /**
+   * 处理玩家断线（立即弃牌，由 server.js 的缓冲期到期后调用）
    */
   handlePlayerDisconnect(playerId) {
     if (!this.gameState) return
@@ -365,7 +404,9 @@ class GameRoom {
       this.clearActionTimer()
       this._doFold(player)
       gs.lastAction = { type: 'fold', name: player.nickname + '(断线)', amount: 0, playerId }
-      this.io.to(this.id).emit('player:action:log', { msg: `${player.nickname} 断线自动弃牌` })
+      player.hasActed = true
+      this.io.to(this.id).emit('player:action:log', { msg: `${player.nickname} 断线超时自动弃牌` })
+      this._broadcastGameState()
       this._checkRoundEnd()
     }
   }

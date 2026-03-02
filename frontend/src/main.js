@@ -57,15 +57,52 @@ import { showToast } from 'vant'
 
 // 延迟一帧确保 socket 单例已初始化（页面会在 onMounted 里 connectSocket）
 // 用轮询方式等 socket 就绪后绑定
-let disbandBound = false
-const bindDisbandListener = () => {
+let globalBound = false
+const bindGlobalListeners = () => {
   try {
     const s = getSocket()
-    if (disbandBound) return
-    disbandBound = true
+    if (globalBound) return
+    globalBound = true
+
+    // 房间解散
     s.on('room:disbanded', ({ message } = {}) => {
       showToast({ message: message || '房间已解散', icon: 'fail', duration: 2500 })
       router.replace('/lobby')
+    })
+
+    // 重连后自动恢复页面
+    // player:auth:ok 会携带 inRoom 信息，表示玩家在某个房间中
+    s.on('player:auth:ok', ({ player, inRoom } = {}) => {
+      if (!inRoom) return
+
+      const currentPath = router.currentRoute.value.path
+      const { roomId, status } = inRoom
+
+      // 如果玩家当前不在正确的页面，自动跳转
+      if (status === 'playing' || status === 'round_end') {
+        // 游戏进行中或轮间等待：跳转到游戏页面
+        const targetPath = `/game/${roomId}`
+        if (!currentPath.startsWith('/game/')) {
+          console.log(`[Reconnect] 自动跳转到游戏页面: ${targetPath}`)
+          showToast({ message: '已重新连接，恢复游戏', icon: 'success', duration: 1500 })
+          router.replace(targetPath)
+        }
+      } else if (status === 'waiting') {
+        // 等待中：跳转到房间页面
+        const targetPath = `/room/${roomId}`
+        if (!currentPath.startsWith('/room/') && !currentPath.startsWith('/game/')) {
+          console.log(`[Reconnect] 自动跳转到房间页面: ${targetPath}`)
+          showToast({ message: '已重新连接，回到房间', icon: 'success', duration: 1500 })
+          router.replace(targetPath)
+        }
+      }
+    })
+
+    // 其他玩家重连通知
+    s.on('player:reconnected', ({ nickname } = {}) => {
+      if (nickname) {
+        showToast({ message: `${nickname} 已重新连接`, icon: 'success', duration: 1500 })
+      }
     })
   } catch (e) {
     // socket 尚未初始化，忽略
@@ -73,4 +110,4 @@ const bindDisbandListener = () => {
 }
 
 // 路由变化时尝试绑定（首次进入游戏页后 socket 已就绪）
-router.afterEach(bindDisbandListener)
+router.afterEach(bindGlobalListeners)
