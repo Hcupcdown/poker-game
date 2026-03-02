@@ -108,19 +108,8 @@
           <!-- 弃牌遮罩 -->
           <div v-if="p.status === 'folded'" class="fold-mask">弃牌</div>
 
-          <!-- 手牌（背面） -->
-          <div class="opp-cards">
-            <template v-if="p.status !== 'folded'">
-              <div
-                v-for="n in 2"
-                :key="n"
-                class="card-back"
-              >
-                <div class="card-back-inner">🂠</div>
-              </div>
-            </template>
-            <div v-if="p.status === 'allin'" class="allin-badge">ALL IN</div>
-          </div>
+          <!-- ALL IN 标记 -->
+          <div v-if="p.status === 'allin'" class="allin-badge">ALL IN</div>
 
           <!-- 倒计时环（当前行动者） -->
           <svg v-if="p.id === gameState.currentPlayerId" class="timer-ring" viewBox="0 0 36 36">
@@ -680,34 +669,27 @@ const myChips = computed(() => me.value?.chips || 0)
 const myCurrentBet = computed(() => me.value?.currentBet || 0)
 
 // ===== 下注金额持久化显示 =====
-// 独立维护的下注显示Map，显示每次操作的单次下注金额
+// 独立维护的下注显示Map，显示本轮累计下注金额
 const displayBets = ref({})
-// 记录每个玩家上一次的 currentBet，用于计算增量（单次下注金额）
-const previousBets = ref({})
 
-// 监听 gameState 变化，更新 displayBets（显示单次下注金额）
+// 监听 gameState 变化，更新 displayBets（显示本轮累计下注金额）
 watch(() => gameState.value.players, (players) => {
   if (!players || !players.length) return
   const newDisplay = { ...displayBets.value }
-  const newPrev = { ...previousBets.value }
   players.forEach(p => {
-    const prevBet = newPrev[p.id] || 0
     const curBet = p.currentBet || 0
-    if (curBet > prevBet) {
-      // currentBet 增加了，说明有新的下注操作，显示增量（单次金额）
-      newDisplay[p.id] = curBet - prevBet
-    } else if (curBet === 0 && prevBet > 0) {
+    if (curBet > 0) {
+      // currentBet > 0，直接显示累计值
+      newDisplay[p.id] = curBet
+    } else if (curBet === 0 && (newDisplay[p.id] || 0) > 0) {
       // 后端清零了（阶段切换），保持上一次显示值不变
     }
     // 弃牌玩家清零显示
     if (p.status === 'folded') {
       newDisplay[p.id] = 0
     }
-    // 更新记录的上一次 currentBet
-    newPrev[p.id] = curBet
   })
   displayBets.value = newDisplay
-  previousBets.value = newPrev
 }, { deep: true })
 
 // 获取某个玩家的显示下注金额
@@ -1064,7 +1046,6 @@ onMounted(() => {
     showFinalResult.value = false
     nextRoundSent.value = false
     displayBets.value = {} // 新局开始，清零下注显示
-    previousBets.value = {} // 清零上一次下注记录
     gameState.value = gs
     store.setGameState(gs)
     communitySlots.value = []
@@ -1137,7 +1118,6 @@ onMounted(() => {
     nextRoundReady.value = 0
     nextRoundTotal.value = 0
     displayBets.value = {} // 新局开始，清零下注显示
-    previousBets.value = {} // 清零上一次下注记录
     gameState.value = gs
     store.setGameState(gs)
     // 重置公共牌 slots
@@ -1617,12 +1597,6 @@ function isRedCard(card) {
   to   { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
 }
 
-.opp-cards {
-  display: flex;
-  gap: 3px;
-  position: relative;
-}
-
 /* ===== 中央牌堆 ===== */
 .deck-pile {
   position: relative;
@@ -1754,37 +1728,6 @@ function isRedCard(card) {
   z-index: 1;
 }
 
-
-.card-back {
-  font-size: 22px;
-  line-height: 1;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
-}
-
-.deal-anim {
-  animation: dealFlyIn 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
-  animation-fill-mode: both;
-}
-
-@keyframes dealFlyIn {
-  from {
-    transform: translate(0, -60px) scale(0.6) rotate(-15deg);
-    opacity: 0;
-  }
-  to {
-    transform: translate(0, 0) scale(1) rotate(0deg);
-    opacity: 1;
-  }
-}
-
-.card-back-inner {
-  display: inline-block;
-  transition: transform 0.15s;
-}
-
-.card-back.deal-anim:active .card-back-inner {
-  transform: scale(0.92);
-}
 
 .allin-badge {
   position: absolute;
