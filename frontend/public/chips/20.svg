@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="350" viewBox="0 0 240 210" xmlns="http://www.w3.org/2000/svg">
+  <defs>    
+        
+    <linearGradient id="sideGradient" x1="0%" y1="0%" x2="0%" y2="100%">    
+      <stop offset="0%" stop-color="#6B806B"/>    
+      <stop offset="100%" stop-color="#4A5F4A"/>    
+    </linearGradient>
+        
+        
+        
+    <style>    
+      .chip-top-base { fill: #6B806B; }    
+      .chip-side-base { fill: url(#sideGradient); }    
+      .stripe-top { stroke: #C4D4C4; opacity: 0.95; }    
+      .stripe-side { fill: #A8B8A8; }    
+      .inner-ring { fill: none; stroke: #C4D4C4; stroke-width: 5; opacity: 0.8; }
+      .chip-text { fill: #C4D4C4; font-family: Arial, sans-serif; font-weight: 800; font-size: 48px; }
+    </style>    
+  </defs>    
+    
+  <g transform="translate(120, 105)">
+        
+        
+        
+    <path d="M -100 0 A 100 90 0 0 0 100 0 V 16 A 100 90 0 0 1 -100 16 Z" class="chip-side-base"/>
+        
+        
+        
+    <g class="stripe-side">    
+          
+          
+      <path d="M 19.5 88.2 A 100 90 0 0 1 -19.5 88.2 V 104.2 A 100 90 0 0 0 19.5 104.2 Z"/>
+          
+          
+          
+          
+      <path d="M 83.1 50.0 A 100 90 0 0 1 55.6 74.8 V 90.8 A 100 90 0 0 0 83.1 66.0 Z"/>
+          
+          
+      <path d="M -55.6 74.8 A 100 90 0 0 1 -83.1 50.0 V 66.0 A 100 90 0 0 0 -55.6 90.8 Z"/>
+          
+          
+          
+      <path d="M 100 0 A 100 90 0 0 1 98.1 17.6 V 33.6 A 100 90 0 0 0 100 16 Z"/>
+          
+          
+      <path d="M -98.1 17.6 A 100 90 0 0 1 -100 0 V 16 A 100 90 0 0 0 -98.1 33.6 Z"/>
+    </g>    
+    
+        
+        
+    <g transform="scale(1, 0.9)">
+          
+      <circle r="100" class="chip-top-base"/>    
+          
+          
+          
+      <circle r="85" fill="none" stroke-width="30" stroke-dasharray="33.38 33.38" stroke-dashoffset="-16.69" class="stripe-top"/>    
+          
+          
+      <circle r="65" class="inner-ring"/>    
+          
+          
+          
+      <text x="0" y="18" text-anchor="middle" class="chip-text">20</text>    
+    </g>    
+        
+  </g>    
+</svg>

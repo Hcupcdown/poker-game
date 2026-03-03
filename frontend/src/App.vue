@@ -69,6 +69,15 @@ html, body {
   border-radius: 12px !important;
 }
 
+/* All In 按钮 */
+.btn-allin {
+  background: linear-gradient(135deg, #e65100, #ff9800) !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  border-radius: 12px !important;
+}
+
 /* 动画 */
 .fade-enter-active, .fade-leave-active {
   transition: opacity 0.3s ease;

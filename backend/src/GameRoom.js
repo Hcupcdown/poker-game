@@ -63,6 +63,9 @@ class GameRoom {
     // 下一轮确认集合
     this.nextRoundReady = null
 
+    // 上一局结算结果（供重连玩家恢复界面）
+    this.lastRoundResult = null
+
     // 断线缓冲计时器 { playerId: timeoutId }
     this.disconnectTimers = {}
   }
@@ -140,6 +143,7 @@ class GameRoom {
     this.gameState = null
     this.deck = null
     this.nextRoundReady = null
+    this.lastRoundResult = null
     this.clearActionTimer()
     this.clearAllDisconnectTimers()
   }
@@ -707,6 +711,9 @@ class GameRoom {
     if (roundResult.gameOver) {
       roundResult.bustedNames = bustedPlayers.map(p => p.nickname)
     }
+
+    // 保存结算结果（供重连玩家恢复界面）
+    this.lastRoundResult = roundResult
 
     // 广播摊牌和结算
     this._broadcastShowdown(roundResult)

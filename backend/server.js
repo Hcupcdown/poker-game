@@ -147,6 +147,25 @@ io.on('connection', (socket) => {
         if (currentRoom.status === 'playing' && currentRoom.gameState.currentPlayerId === playerId) {
           currentRoom._startActionTimer()
         }
+        // round_end 状态下：推送上一局结算结果和确认进度，让重连玩家恢复到等待下一局界面
+        if (currentRoom.status === 'round_end' && currentRoom.lastRoundResult) {
+          setTimeout(() => {
+            socket.emit('game:result', currentRoom.lastRoundResult)
+            const total = currentRoom.players.length
+            const ready = currentRoom.nextRoundReady ? currentRoom.nextRoundReady.size : 0
+            socket.emit('game:next_round_ready', {
+              ready,
+              total,
+              readyIds: currentRoom.nextRoundReady ? [...currentRoom.nextRoundReady] : []
+            })
+            // 广播更新后的进度给所有人（因为在线人数变了）
+            io.to(currentRoomId).emit('game:next_round_ready', {
+              ready,
+              total,
+              readyIds: currentRoom.nextRoundReady ? [...currentRoom.nextRoundReady] : []
+            })
+          }, 400)
+        }
       }
 
       // 推送房间信息
@@ -236,6 +255,25 @@ io.on('connection', (socket) => {
         // 如果该玩家是当前行动者，重新启动行动超时计时器
         if (room.status === 'playing' && room.gameState.currentPlayerId === playerId) {
           room._startActionTimer()
+        }
+        // round_end 状态下：推送上一局结算结果和确认进度，让重连玩家恢复到等待下一局界面
+        if (room.status === 'round_end' && room.lastRoundResult) {
+          setTimeout(() => {
+            socket.emit('game:result', room.lastRoundResult)
+            const total = room.players.length
+            const ready = room.nextRoundReady ? room.nextRoundReady.size : 0
+            socket.emit('game:next_round_ready', {
+              ready,
+              total,
+              readyIds: room.nextRoundReady ? [...room.nextRoundReady] : []
+            })
+            // 广播更新后的进度给所有人
+            io.to(normalId).emit('game:next_round_ready', {
+              ready,
+              total,
+              readyIds: room.nextRoundReady ? [...room.nextRoundReady] : []
+            })
+          }, 300)
         }
       }
       return
@@ -413,8 +451,8 @@ io.on('connection', (socket) => {
     if (!room.nextRoundReady) room.nextRoundReady = new Set()
     room.nextRoundReady.add(playerId)
 
-    const connectedPlayers = room.players.filter(p => p.connected !== false)
-    const total = connectedPlayers.length
+    // total 统计所有玩家（包含掉线玩家），掉线玩家也需要确认
+    const total = room.players.length
     const ready = room.nextRoundReady.size
 
     // 广播等待进度
@@ -424,21 +462,9 @@ io.on('connection', (socket) => {
       readyIds: [...room.nextRoundReady]
     })
 
-    // 全员就绪
+    // 全员就绪（所有玩家都已确认，包括掉线后重连的玩家）
     if (ready >= total) {
       room.nextRoundReady = null
-
-      // 检查所有玩家在线状态
-      const offlinePlayers = room.players.filter(p => p.connected === false)
-      if (offlinePlayers.length > 0) {
-        const names = offlinePlayers.map(p => p.nickname).join('、')
-        io.to(room.id).emit('error', { message: `${names} 当前不在线，等待所有玩家上线后才能继续` })
-        // 重置就绪状态，等待离线玩家重连后重新确认
-        room.nextRoundReady = new Set()
-        room.status = 'round_end'
-        io.to(room.id).emit('game:next_round_ready', { ready: 0, total, readyIds: [] })
-        return
-      }
 
       // 检查是否有人筹码耗尽 → 游戏结束
       const bustedPlayers = room.players.filter(p => p.chips <= 0)
@@ -558,15 +584,12 @@ function handleDisconnect(socket, playerId) {
             }
           })
         }
-        // round_end 状态下断线：检查是否所有在线玩家都已确认
-        if (room.status === 'round_end' && room.nextRoundReady) {
-          const connectedPlayers = room.players.filter(pl => pl.connected !== false)
-          const total = connectedPlayers.length
-          const ready = [...room.nextRoundReady].filter(id => connectedPlayers.some(pl => pl.id === id)).length
-          if (ready >= total && total >= 2) {
-            // 触发下一轮检查（模拟全员就绪）
-            io.to(code).emit('game:next_round_ready', { ready, total, readyIds: [...room.nextRoundReady] })
-          }
+        // round_end 状态下断线：广播断线通知，但不改变确认人数要求
+        // 掉线玩家仍然算在 total 中，需要重连后确认
+        if (room.status === 'round_end') {
+          const total = room.players.length
+          const ready = room.nextRoundReady ? room.nextRoundReady.size : 0
+          io.to(code).emit('game:next_round_ready', { ready, total, readyIds: room.nextRoundReady ? [...room.nextRoundReady] : [] })
         }
       } else {
         // 等待室：60s 重连机会（延长以给玩家更多重连时间）

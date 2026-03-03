@@ -58,7 +58,6 @@
                   <span v-if="p.id === room.ownerId" class="owner-badge">房主</span>
                   <span v-if="p.id === store.player?.id" class="me-badge">我</span>
                 </div>
-                <div class="player-chips">💰 {{ p.chips?.toLocaleString() }}</div>
               </div>
               <div class="player-ready">
                 <span class="ready-icon" v-if="p.connected !== false">{{ p.id === store.player?.id ? '🟢' : '🟡' }}</span>
@@ -457,12 +456,6 @@ function handleBack() {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 8px;
-}
-
-.player-chips {
-  color: #f5c842;
-  font-size: 12px;
-  margin-top: 2px;
 }
 
 .ready-icon {
