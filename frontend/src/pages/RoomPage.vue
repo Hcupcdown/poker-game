@@ -29,6 +29,20 @@
         </div>
       </div>
 
+      <!-- 房主快捷设置按钮 -->
+      <div v-if="isOwner" class="owner-actions">
+        <div class="action-btn card-box" @click="showBotPopup = true">
+          <span class="action-icon">🤖</span>
+          <span class="action-label">添加机器人</span>
+          <span class="action-arrow">›</span>
+        </div>
+        <div class="action-btn card-box" @click="showChipsPopup = true">
+          <span class="action-icon">💰</span>
+          <span class="action-label">筹码 <span class="action-val gold">{{ startChips.toLocaleString() }}</span></span>
+          <span class="action-arrow">›</span>
+        </div>
+      </div>
+
       <!-- 玩家列表 -->
       <div class="players-section">
         <h3 class="section-title">
@@ -83,21 +97,6 @@
               <span class="empty-text">等待加入…</span>
             </div>
           </div>
-        </div>
-      </div>
-
-      <!-- 房主快捷设置按钮 -->
-      <div v-if="isOwner" class="owner-actions">
-        <div class="action-btn card-box" @click="showBotPopup = true">
-          <span class="action-icon">🤖</span>
-          <span class="action-label">添加机器人</span>
-          <span class="action-arrow">›</span>
-        </div>
-        <div class="action-btn card-box" @click="showChipsPopup = true">
-          <span class="action-icon">💰</span>
-          <span class="action-label">初始筹码</span>
-          <span class="action-val gold">{{ startChips.toLocaleString() }}</span>
-          <span class="action-arrow">›</span>
         </div>
       </div>
 
@@ -641,17 +640,17 @@ function handleBack() {
 /* 房主快捷操作按钮 */
 .owner-actions {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 10px;
-  margin-top: 16px;
-  margin-bottom: 100px;
+  margin-bottom: 14px;
 }
 
 .action-btn {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 8px;
+  padding: 12px 12px;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -662,27 +661,27 @@ function handleBack() {
 }
 
 .action-icon {
-  font-size: 22px;
+  font-size: 18px;
   flex-shrink: 0;
 }
 
 .action-label {
   flex: 1;
   color: #fff;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
 }
 
 .action-val {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .action-arrow {
   color: rgba(255,255,255,0.3);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 300;
-  margin-left: 4px;
+  margin-left: 2px;
 }
 
 /* 弹出卡片通用 */

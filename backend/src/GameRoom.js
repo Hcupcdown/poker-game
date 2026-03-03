@@ -38,6 +38,9 @@ const HandEvaluator = require('./HandEvaluator')
 // 行动超时：30秒
 const ACTION_TIMEOUT_MS = 30 * 1000
 
+// 发牌动画预留时间（毫秒）：等待前端发牌动画完成后才允许行动
+const DEAL_ANIMATION_MS = 3500
+
 // 游戏阶段顺序
 const PHASES = ['preflop', 'flop', 'turn', 'river', 'showdown']
 
@@ -73,6 +76,10 @@ class GameRoom {
     this.onPhaseAdvanced = null
     // 回调钩子：超时弃牌后通知外部
     this.onActionTimeout = null
+    // 回调钩子：发牌动画结束后通知外部（触发机器人行动）
+    this.onDealAnimationDone = null
+    // 发牌动画延迟计时器
+    this._dealAnimTimer = null
   }
 
   // ============================
@@ -161,6 +168,7 @@ class GameRoom {
     this.nextRoundReady = null
     this.lastRoundResult = null
     this.clearActionTimer()
+    this._clearDealAnimTimer()
     this.clearAllDisconnectTimers()
   }
 
@@ -275,10 +283,7 @@ class GameRoom {
     }
     gs.currentPlayerId = gs.players[firstIdx].id
 
-    // 先启动行动超时计时器（设置 actionDeadline），再广播，确保前端收到的状态包含正确的截止时间
-    this._startActionTimer()
-
-    // 广播
+    // 广播游戏状态（此时先不启动行动计时器，等发牌动画结束后再启动）
     if (isFirstRound) {
       console.log(`[Game] 广播 game:start（首局）`)
       this._broadcastGameStart()
@@ -288,6 +293,19 @@ class GameRoom {
     }
 
     console.log(`[Game] 房间 ${this.id} 新局开始，庄家: ${gs.players[dealerIdx].nickname}，小盲: ${gs.players[sbIdx].nickname}，大盲: ${gs.players[bbIdx].nickname}`)
+
+    // 延迟启动行动计时器，等发牌动画完成后才允许行动
+    // 同时通知外部（server.js）在动画结束后才触发机器人行动
+    this._dealAnimTimer = setTimeout(() => {
+      this._dealAnimTimer = null
+      // 确保游戏仍在进行中
+      if (this.status !== 'playing' || !this.gameState) return
+      this._startActionTimer()
+      // 广播一次最新状态（包含 actionDeadline）
+      this._broadcastGameState()
+      // 通知外部：发牌动画结束，可以触发机器人行动
+      if (this.onDealAnimationDone) this.onDealAnimationDone(this)
+    }, DEAL_ANIMATION_MS)
   }
 
   /**
@@ -779,6 +797,13 @@ class GameRoom {
       this.actionTimer = null
     }
     this.actionDeadline = null
+  }
+
+  _clearDealAnimTimer() {
+    if (this._dealAnimTimer) {
+      clearTimeout(this._dealAnimTimer)
+      this._dealAnimTimer = null
+    }
   }
 
   // ============================

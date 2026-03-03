@@ -94,24 +94,33 @@
       </div>
     </teleport>
 
-    <!-- ===== 我的区域 ===== -->
-    <MyArea
-      ref="myAreaComp"
-      :cards="myCards"
-      :chips="myChips"
-      :display-bet="myDisplayBet"
-      :card-revealed="cardRevealed"
-      :cards-visible="cardsVisible"
-      :deal-anim-key="dealAnimKey"
-      :is-my-turn="isMyTurn"
-      :time-left="timeLeft"
-      :avatar="store.player?.avatar"
-      :nickname="store.player?.nickname"
-      :is-dealer="me?.isDealer"
-      :is-small-blind="me?.isSmallBlind"
-      :is-big-blind="me?.isBigBlind"
-      @toggle-reveal="toggleCardReveal"
-    />
+    <!-- ===== 我的区域 + 操作日志 ===== -->
+    <div class="my-area-wrapper">
+      <MyArea
+        ref="myAreaComp"
+        :cards="myCards"
+        :chips="myChips"
+        :display-bet="myDisplayBet"
+        :card-revealed="cardRevealed"
+        :cards-visible="cardsVisible"
+        :deal-anim-key="dealAnimKey"
+        :is-my-turn="isMyTurn"
+        :time-left="timeLeft"
+        :avatar="store.player?.avatar"
+        :nickname="store.player?.nickname"
+        :is-dealer="me?.isDealer"
+        :is-small-blind="me?.isSmallBlind"
+        :is-big-blind="me?.isBigBlind"
+        @toggle-reveal="toggleCardReveal"
+      />
+      <div class="action-log">
+        <transition-group name="fade">
+          <div v-for="log in store.actionLog.slice(0, 3)" :key="log.time" class="log-item">
+            {{ log.msg }}
+          </div>
+        </transition-group>
+      </div>
+    </div>
 
     <!-- ===== 操作面板 ===== -->
     <ActionPanel
@@ -143,15 +152,6 @@
       @back-to-room="backToRoom"
       @end-game="endGame"
     />
-
-    <!-- ===== 操作日志 ===== -->
-    <div class="action-log">
-      <transition-group name="fade">
-        <div v-for="log in store.actionLog.slice(0, 3)" :key="log.time" class="log-item">
-          {{ log.msg }}
-        </div>
-      </transition-group>
-    </div>
 
   </div>
 </template>
@@ -236,7 +236,8 @@ const opponents = computed(() => {
 const myCards = computed(() => me.value?.cards || [])
 const myChips = computed(() => me.value?.chips || 0)
 const myCurrentBet = computed(() => me.value?.currentBet || 0)
-const isMyTurn = computed(() => gameState.value.currentPlayerId === store.player?.id)
+// 只有当 actionDeadline 有值时才认为真正轮到我（发牌动画期间 actionDeadline 为 null，操作面板自动禁用）
+const isMyTurn = computed(() => gameState.value.currentPlayerId === store.player?.id && !!gameState.value.actionDeadline)
 const isInGame = computed(() => me.value?.status === 'active')
 const communityCards = computed(() => gameState.value.communityCards || [])
 const lastAction = computed(() => gameState.value.lastAction)
@@ -660,24 +661,38 @@ onUnmounted(() => {
 
 .gold { color: #f5c842; }
 
-/* ===== 操作日志 ===== */
+/* ===== 我的区域包裹层 ===== */
+.my-area-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* ===== 操作日志（手牌区域右侧） ===== */
 .action-log {
   position: absolute;
-  top: 52px;
-  left: 8px;
+  right: 8px;
+  top: 6px;
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 4px;
   pointer-events: none;
   z-index: 20;
+  max-width: 45%;
 }
 
 .log-item {
   background: rgba(0,0,0,0.6);
   color: rgba(255,255,255,0.8);
-  font-size: 11px;
-  padding: 3px 10px;
+  font-size: 10px;
+  padding: 3px 8px;
   border-radius: 10px;
-  border-left: 2px solid #f5c842;
+  border-right: 2px solid #f5c842;
+  border-left: none;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 </style>

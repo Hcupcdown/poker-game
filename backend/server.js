@@ -289,9 +289,10 @@ io.on('connection', (socket) => {
     const { smallBlind = 10, bigBlind = 20, maxPlayers = 6 } = data || {}
 
     const room = new GameRoom({ id: roomCode, ownerId: playerId, smallBlind, bigBlind, maxPlayers, io })
-    // 注册回调：阶段切换 / 超时弃牌 后触发机器人行动
+    // 注册回调：阶段切换 / 超时弃牌 / 发牌动画结束 后触发机器人行动
     room.onPhaseAdvanced = (r) => triggerBotActionIfNeeded(r)
     room.onActionTimeout = (r) => triggerBotActionIfNeeded(r)
+    room.onDealAnimationDone = (r) => triggerBotActionIfNeeded(r)
     rooms.set(roomCode, room)
     room.addPlayer(player, socket)
     socket.join(roomCode)
@@ -529,8 +530,7 @@ io.on('connection', (socket) => {
       try {
         room.startGame({ startChips, isFirstRound: true })
         console.log(`[Game] 房间 ${roomId} 首局开始，初始筹码: ${startChips || '默认'}`)
-        // 游戏开始后检查是否轮到机器人
-        triggerBotActionIfNeeded(room)
+        // 机器人行动将在发牌动画结束后由 onDealAnimationDone 回调触发
       } catch (err) {
         console.error(`[Game] 房间 ${roomId} 开始失败: ${err.message}`)
         io.to(roomId).emit('error', { message: err.message })
@@ -729,8 +729,7 @@ io.on('connection', (socket) => {
       try {
         room.startGame({ isFirstRound: false })
         console.log(`[Game] 房间 ${room.id} 开始新一轮`)
-        // 检查是否轮到机器人先行动
-        triggerBotActionIfNeeded(room)
+        // 机器人行动将在发牌动画结束后由 onDealAnimationDone 回调触发
       } catch (err) {
         console.error(`[Game] 开始新一轮失败: ${err.message}`)
         io.to(room.id).emit('error', { message: err.message })
