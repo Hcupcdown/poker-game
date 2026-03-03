@@ -48,20 +48,34 @@
               v-for="(p, i) in players"
               :key="p.id"
               class="player-item card-box"
-              :class="{ 'is-me': p.id === store.player?.id, 'is-owner': p.id === room.ownerId }"
+              :class="{ 'is-me': p.id === store.player?.id, 'is-owner': p.id === room.ownerId, 'is-bot': p.isBot }"
             >
               <div class="player-seat">{{ i + 1 }}</div>
               <div class="player-avatar">{{ p.avatar }}</div>
               <div class="player-info">
                 <div class="player-name">
                   {{ p.nickname }}
-                  <span v-if="p.id === room.ownerId" class="owner-badge">房主</span>
+                  <span v-if="p.isBot" class="bot-badge">🤖 Bot</span>
+                  <span v-if="p.id === room.ownerId && !p.isBot" class="owner-badge">房主</span>
                   <span v-if="p.id === store.player?.id" class="me-badge">我</span>
                 </div>
+                <div v-if="p.isBot && p.botLevel" class="bot-level-text">
+                  {{ { easy: '简单', medium: '中等', hard: '困难' }[p.botLevel] || p.botLevel }} 难度
+                </div>
               </div>
-              <div class="player-ready">
-                <span class="ready-icon" v-if="p.connected !== false">{{ p.id === store.player?.id ? '🟢' : '🟡' }}</span>
-                <span class="offline-icon" v-else>🔴</span>
+              <div class="player-right">
+                <!-- 房主可删除机器人 -->
+                <van-button
+                  v-if="isOwner && p.isBot"
+                  size="mini"
+                  class="btn-remove-bot"
+                  @click="removeBot(p.id)"
+                >×</van-button>
+                <span v-else class="player-ready">
+                  <span class="ready-icon" v-if="!p.isBot && p.connected !== false">{{ p.id === store.player?.id ? '🟢' : '🟡' }}</span>
+                  <span class="ready-icon" v-if="p.isBot">🤖</span>
+                  <span class="offline-icon" v-if="!p.isBot && p.connected === false">🔴</span>
+                </span>
               </div>
             </div>
           </transition-group>
@@ -84,6 +98,32 @@
       <!-- 底部操作 -->
       <div class="room-footer">
         <template v-if="isOwner">
+          <!-- 添加机器人区块（仅房主可见） -->
+          <div class="bot-section card-box">
+            <p class="bot-section-label">🤖 添加机器人</p>
+            <div class="bot-controls">
+              <div class="bot-level-select">
+                <div
+                  v-for="opt in botLevelOptions"
+                  :key="opt.value"
+                  class="level-option"
+                  :class="{ selected: selectedBotLevel === opt.value }"
+                  @click="selectedBotLevel = opt.value"
+                >
+                  {{ opt.label }}
+                </div>
+              </div>
+              <van-button
+                size="small"
+                class="btn-add-bot"
+                :disabled="room.players && players.length >= room.maxPlayers"
+                @click="addBot"
+              >
+                + 添加机器人
+              </van-button>
+            </div>
+          </div>
+
           <!-- 筹码设置（仅房主可见） -->
           <div class="chips-setting card-box">
             <p class="chips-setting-label">初始筹码</p>
@@ -138,6 +178,14 @@ const starting = ref(false)
 const startChips = ref(1000)
 const chipOptions = [500, 1000, 2000, 5000]
 
+// 机器人相关
+const selectedBotLevel = ref('easy')
+const botLevelOptions = [
+  { label: '简单', value: 'easy' },
+  { label: '中等', value: 'medium' },
+  { label: '困难', value: 'hard' }
+]
+
 // 房间数据（由 socket 同步）
 const room = reactive({
   id: roomId.value,
@@ -151,8 +199,8 @@ const room = reactive({
 const players = ref([])
 
 const isOwner = computed(() => store.player?.id === room.ownerId)
-const hasOfflinePlayers = computed(() => players.value.some(p => p.connected === false))
-const offlineNames = computed(() => players.value.filter(p => p.connected === false).map(p => p.nickname).join('、'))
+const hasOfflinePlayers = computed(() => players.value.some(p => !p.isBot && p.connected === false))
+const offlineNames = computed(() => players.value.filter(p => !p.isBot && p.connected === false).map(p => p.nickname).join('、'))
 const emptySeats = computed(() => {
   const n = room.maxPlayers - players.value.length
   return Math.min(Math.max(n, 0), 3)
@@ -162,6 +210,18 @@ function applyRoomUpdate(data) {
   Object.assign(room, data)
   players.value = data.players || []
   store.setRoom(data)
+}
+
+function addBot() {
+  if (players.value.length >= room.maxPlayers) {
+    showToast({ message: '房间已满', icon: 'fail' })
+    return
+  }
+  getSocket().emit('room:add_bot', { level: selectedBotLevel.value })
+}
+
+function removeBot(botId) {
+  getSocket().emit('room:remove_bot', { botId })
 }
 
 onMounted(() => {
@@ -410,6 +470,11 @@ function handleBack() {
   border-color: rgba(46,204,113,0.3) !important;
 }
 
+.player-item.is-bot {
+  border-color: rgba(100,180,255,0.25) !important;
+  background: rgba(100,180,255,0.04) !important;
+}
+
 .player-seat {
   width: 24px;
   height: 24px;
@@ -439,6 +504,13 @@ function handleBack() {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bot-level-text {
+  color: rgba(100,180,255,0.7);
+  font-size: 11px;
+  margin-top: 2px;
 }
 
 .owner-badge {
@@ -458,6 +530,26 @@ function handleBack() {
   border-radius: 8px;
 }
 
+.bot-badge {
+  background: rgba(100,180,255,0.2);
+  color: #64b4ff;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.player-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.player-ready {
+  display: flex;
+  align-items: center;
+}
+
 .ready-icon {
   font-size: 18px;
 }
@@ -469,6 +561,21 @@ function handleBack() {
 .offline-warning {
   color: #e74c3c !important;
   font-weight: 600;
+}
+
+.btn-remove-bot {
+  background: rgba(231,76,60,0.2) !important;
+  border-color: rgba(231,76,60,0.4) !important;
+  color: #e74c3c !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 空位 */
@@ -511,6 +618,59 @@ function handleBack() {
   font-size: 13px;
   text-align: center;
   margin: 0 0 8px;
+}
+
+/* 机器人添加区块 */
+.bot-section {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.bot-section-label {
+  color: rgba(255,255,255,0.55);
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+.bot-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bot-level-select {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.level-option {
+  flex: 1;
+  padding: 6px 0;
+  text-align: center;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(255,255,255,0.06);
+  border: 1.5px solid transparent;
+  color: rgba(255,255,255,0.6);
+  transition: all 0.2s;
+}
+
+.level-option.selected {
+  border-color: #64b4ff;
+  background: rgba(100,180,255,0.15);
+  color: #64b4ff;
+}
+
+.btn-add-bot {
+  background: rgba(100,180,255,0.15) !important;
+  border-color: rgba(100,180,255,0.4) !important;
+  color: #64b4ff !important;
+  font-size: 12px !important;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* 房主筹码设置 */

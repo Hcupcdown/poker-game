@@ -79,8 +79,11 @@ class GameRoom {
 
     const existing = this.players.find(p => p.id === playerData.id)
     if (existing) {
-      existing.socketId = socket.id
-      existing.connected = true
+      // 机器人没有 socket，不更新 socketId
+      if (!playerData.isBot && socket) {
+        existing.socketId = socket.id
+        existing.connected = true
+      }
       return existing
     }
 
@@ -89,9 +92,13 @@ class GameRoom {
       nickname: playerData.nickname,
       avatar: playerData.avatar,
       chips: playerData.chips,
-      socketId: socket.id,
-      connected: true,
-      seatIndex: this.players.length
+      // 机器人没有 socket，socketId 为 null
+      socketId: playerData.isBot ? null : (socket ? socket.id : null),
+      connected: playerData.isBot ? true : true,
+      seatIndex: this.players.length,
+      // 机器人标记
+      isBot: playerData.isBot || false,
+      botLevel: playerData.botLevel || null
     }
     this.players.push(p)
     return p
@@ -103,7 +110,9 @@ class GameRoom {
     const [removed] = this.players.splice(idx, 1)
     this.players.forEach((p, i) => { p.seatIndex = i })
     if (this.ownerId === playerId && this.players.length > 0) {
-      this.ownerId = this.players[0].id
+      // 新房主优先选非机器人玩家
+      const nonBot = this.players.find(p => !p.isBot)
+      this.ownerId = nonBot ? nonBot.id : this.players[0].id
     }
     return removed
   }
@@ -128,7 +137,9 @@ class GameRoom {
         avatar: p.avatar,
         chips: p.chips,
         connected: p.connected,
-        seatIndex: p.seatIndex
+        seatIndex: p.seatIndex,
+        isBot: p.isBot || false,
+        botLevel: p.botLevel || null
       })),
       maxPlayers: this.maxPlayers,
       smallBlind: this.smallBlind,
@@ -207,7 +218,9 @@ class GameRoom {
         isDealer: false,
         isSmallBlind: false,
         isBigBlind: false,
-        hasActed: false
+        hasActed: false,
+        isBot: p.isBot || false,
+        botLevel: p.botLevel || null
       }))
     }
 
@@ -754,12 +767,13 @@ class GameRoom {
   }
 
   // ============================
-  // 广播
+  // 广播（跳过机器人玩家，他们没有 socket）
   // ============================
 
   _broadcastGameStart() {
     const gs = this.gameState
     for (const player of this.players) {
+      if (player.isBot) continue  // 机器人没有 socket，跳过
       const socketId = player.socketId
       if (!socketId) continue
       const socket = this.io.sockets.sockets.get(socketId)
@@ -771,6 +785,7 @@ class GameRoom {
 
   _broadcastNextRoundStart() {
     for (const player of this.players) {
+      if (player.isBot) continue  // 机器人没有 socket，跳过
       const socketId = player.socketId
       if (!socketId) continue
       const socket = this.io.sockets.sockets.get(socketId)
@@ -782,6 +797,7 @@ class GameRoom {
 
   _broadcastGameState() {
     for (const player of this.players) {
+      if (player.isBot) continue  // 机器人没有 socket，跳过
       const socketId = player.socketId
       if (!socketId) continue
       const socket = this.io.sockets.sockets.get(socketId)

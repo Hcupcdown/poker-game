@@ -23,7 +23,10 @@
 
     <!-- 玩家信息 -->
     <div class="opp-info">
-      <div class="opp-name">{{ player.nickname }}</div>
+      <div class="opp-name">
+        <span v-if="player.isBot" class="bot-indicator">🤖</span>{{ player.nickname }}
+      </div>
+      <div class="opp-chips">{{ player.chips?.toLocaleString?.() ?? player.chips }}</div>
       <div v-if="displayBet > 0 && player.status !== 'folded'" class="opp-bet">
 <img src="/chip.png" class="chip-icon" />
         <span class="bet-amount">{{ displayBet }}</span>
@@ -141,6 +144,21 @@ defineProps({
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.bot-indicator {
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.opp-chips {
+  color: rgba(255,255,255,0.5);
+  font-size: 10px;
+  margin-top: 1px;
 }
 
 .opp-bet {
