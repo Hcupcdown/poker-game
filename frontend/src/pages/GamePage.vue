@@ -5,6 +5,11 @@
     <div class="top-bar">
       <div class="top-left">
         <span class="phase-badge">{{ PHASE_NAMES[gameState.phase] }}</span>
+        <span class="connection-indicator" :class="'status-' + connectionStatus">
+          <span class="status-dot"></span>
+          <span class="status-text" v-if="connectionStatus !== 'connected'">{{ CONNECTION_STATUS_TEXT[connectionStatus] }}</span>
+          <span class="latency-text" v-if="connectionStatus === 'connected' && networkLatency > 100">{{ networkLatency }}ms</span>
+        </span>
       </div>
       <div class="top-right">
         <span class="room-code">{{ roomId }}</span>
@@ -70,7 +75,7 @@
         <span class="toast-name">{{ actionToast.name }}</span>
         <span class="toast-verb">{{ ACTION_NAMES[actionToast.type] || actionToast.type }}</span>
         <span v-if="actionToast.amount > 0" class="toast-amount">
-<img src="/chips/10.svg" class="chip-icon chip-icon-lg" />{{ actionToast.amount.toLocaleString() }}
+<img src="/chip.png" class="chip-icon chip-icon-lg" />{{ actionToast.amount.toLocaleString() }}
         </span>
       </div>
     </transition>
@@ -157,7 +162,7 @@ import { useGameStore } from '../stores/gameStore'
 import { PHASE_NAMES } from '../utils/cardUtils'
 import { ACTION_NAMES } from '../constants/handRules'
 import { showToast } from 'vant'
-import { getSocket } from '../utils/socket'
+import { getSocket, connectionStatus, networkLatency } from '../utils/socket'
 
 // 子组件
 import OpponentSlot from '../components/game/OpponentSlot.vue'
@@ -176,6 +181,13 @@ const route = useRoute()
 const router = useRouter()
 const store = useGameStore()
 const roomId = route.params.id.toUpperCase()
+
+const CONNECTION_STATUS_TEXT = {
+  connected: '已连接',
+  unstable: '连接不稳定',
+  disconnected: '已断开',
+  reconnecting: '重连中...'
+}
 
 // ====== 游戏状态 ======
 const gameState = ref({
@@ -391,6 +403,69 @@ onUnmounted(() => {
   letter-spacing: 2px;
 }
 
+/* ===== 连接状态指示器 ===== */
+.connection-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  transition: all 0.3s ease;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transition: background 0.3s ease;
+}
+
+.status-connected .status-dot {
+  background: #4caf50;
+  box-shadow: 0 0 4px rgba(76, 175, 80, 0.6);
+}
+
+.status-unstable .status-dot {
+  background: #ff9800;
+  box-shadow: 0 0 4px rgba(255, 152, 0, 0.6);
+  animation: pulse-dot 1s infinite;
+}
+
+.status-disconnected .status-dot {
+  background: #f44336;
+  box-shadow: 0 0 4px rgba(244, 67, 54, 0.6);
+}
+
+.status-reconnecting .status-dot {
+  background: #ff9800;
+  animation: pulse-dot 0.6s infinite;
+}
+
+.status-text {
+  color: rgba(255,255,255,0.7);
+  font-weight: 500;
+}
+
+.status-disconnected .status-text {
+  color: #ef9a9a;
+}
+
+.status-reconnecting .status-text {
+  color: #ffcc80;
+}
+
+.latency-text {
+  color: rgba(255,255,255,0.35);
+  font-size: 9px;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 /* ===== 牌桌主区 ===== */
 .table-area {
   flex: 1;
@@ -400,7 +475,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   min-height: 0;
-  padding-top: 30%;
+  padding-top: 35%;
 }
 
 .table-area::before {

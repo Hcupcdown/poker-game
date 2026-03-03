@@ -2,7 +2,7 @@
   <div class="my-area" ref="myAreaRef">
     <!-- 我的已下注（底牌上方） -->
     <div class="my-bet-above" v-if="displayBet > 0">
-<img src="/chips/10.svg" class="chip-icon chip-icon-lg" />
+<img src="/chip.png" class="chip-icon chip-icon-lg" />
       <span class="my-bet-above-val">{{ displayBet }}</span>
     </div>
 

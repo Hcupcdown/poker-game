@@ -91,6 +91,7 @@ defineExpose({ deckEl })
   gap: 8px;
   z-index: 2;
   width: 100%;
+  position: relative;
 }
 
 .center-row {
@@ -101,6 +102,10 @@ defineExpose({ deckEl })
 }
 
 .pot-display {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(100% + 6px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -108,8 +113,10 @@ defineExpose({ deckEl })
   background: rgba(0,0,0,0.45);
   border: 1px solid rgba(245,200,66,0.3);
   border-radius: 12px;
-  padding: 8px 20px;
-  min-width: 100px;
+  padding: 6px 16px;
+  min-width: 90px;
+  z-index: 5;
+  white-space: nowrap;
 }
 
 .pot-display-label {

@@ -25,7 +25,7 @@
     <div class="opp-info">
       <div class="opp-name">{{ player.nickname }}</div>
       <div v-if="displayBet > 0 && player.status !== 'folded'" class="opp-bet">
-<img src="/chips/10.svg" class="chip-icon" />
+<img src="/chip.png" class="chip-icon" />
         <span class="bet-amount">{{ displayBet }}</span>
       </div>
     </div>

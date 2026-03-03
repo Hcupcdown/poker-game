@@ -19,7 +19,10 @@ const io = new Server(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST']
-  }
+  },
+  // 心跳机制配置
+  pingInterval: 10000,  // 每 10 秒发送一次 ping
+  pingTimeout: 8000,    // 8 秒内未收到 pong 则视为断线
 })
 
 app.use(cors())
@@ -85,6 +88,29 @@ app.get('/api/rooms', (req, res) => {
 // ====== Socket.IO 事件处理 ======
 io.on('connection', (socket) => {
   console.log(`[Socket] 新连接: ${socket.id}`)
+
+  // 记录最后活跃时间
+  socket.lastHeartbeat = Date.now()
+
+  // ----------------------------------------------------------------
+  // heartbeat — 自定义心跳
+  // ----------------------------------------------------------------
+  socket.on('heartbeat', (data, callback) => {
+    socket.lastHeartbeat = Date.now()
+    const playerId = socketToPlayer.get(socket.id)
+    // 返回心跳响应，附带服务器时间和连接状态
+    const response = {
+      serverTime: Date.now(),
+      connected: true,
+      playerId: playerId || null
+    }
+    // 如果客户端传了回调函数，使用回调返回（更可靠）
+    if (typeof callback === 'function') {
+      callback(response)
+    } else {
+      socket.emit('heartbeat:ack', response)
+    }
+  })
 
   // ----------------------------------------------------------------
   // player:auth — 认证
@@ -530,6 +556,32 @@ io.on('connection', (socket) => {
     }
   })
 })
+
+// ====== 僵尸连接清理（每 30 秒检查一次） ======
+const ZOMBIE_CHECK_INTERVAL = 30000  // 30 秒检查一次
+const ZOMBIE_TIMEOUT = 60000         // 60 秒无心跳视为僵尸连接
+
+setInterval(() => {
+  const now = Date.now()
+  for (const [socketId, socket] of io.sockets.sockets) {
+    // 检查是否超时且已认证的连接
+    if (socket.lastHeartbeat && (now - socket.lastHeartbeat > ZOMBIE_TIMEOUT)) {
+      const playerId = socketToPlayer.get(socketId)
+      if (playerId) {
+        console.log(`[Heartbeat] 僵尸连接检测: ${playerId} (socket=${socketId})，最后心跳: ${Math.round((now - socket.lastHeartbeat) / 1000)}s 前`)
+        // 不主动断开，让 Socket.IO 内置 ping/pong 处理
+        // 但标记玩家为疑似离线状态
+        const room = findPlayerRoom(playerId)
+        if (room) {
+          const player = room.players.find(p => p.id === playerId)
+          if (player && player.connected) {
+            console.log(`[Heartbeat] 标记 ${player.nickname} 为可能断线状态`)
+          }
+        }
+      }
+    }
+  }
+}, ZOMBIE_CHECK_INTERVAL)
 
 // ====== 工具函数 ======
 
