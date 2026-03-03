@@ -102,10 +102,6 @@ defineExpose({ deckEl })
 }
 
 .pot-display {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(100% + 6px);
   display: flex;
   flex-direction: column;
   align-items: center;

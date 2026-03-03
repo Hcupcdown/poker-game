@@ -29,12 +29,6 @@
         </div>
       </div>
 
-      <!-- 分享提示 -->
-      <div class="share-tip card-box">
-        <van-icon name="share-o" color="#f5c842" size="18" />
-        <span>把房间号 <strong class="gold">{{ roomId }}</strong> 分享给朋友，让他们来加入！</span>
-      </div>
-
       <!-- 玩家列表 -->
       <div class="players-section">
         <h3 class="section-title">
@@ -92,37 +86,71 @@
         </div>
       </div>
 
-      <!-- 房主设置区（在主内容流中，可正常滚动） -->
-      <template v-if="isOwner">
-        <!-- 添加机器人区块 -->
-        <div class="bot-section card-box">
-          <p class="bot-section-label">🤖 添加机器人</p>
-          <div class="bot-controls">
-            <div class="bot-level-select">
-              <div
-                v-for="opt in botLevelOptions"
-                :key="opt.value"
-                class="level-option"
-                :class="{ selected: selectedBotLevel === opt.value }"
-                @click="selectedBotLevel = opt.value"
-              >
-                {{ opt.label }}
-              </div>
-            </div>
-            <van-button
-              size="small"
-              class="btn-add-bot"
-              :disabled="room.players && players.length >= room.maxPlayers"
-              @click="addBot"
-            >
-              + 添加机器人
-            </van-button>
-          </div>
+      <!-- 房主快捷设置按钮 -->
+      <div v-if="isOwner" class="owner-actions">
+        <div class="action-btn card-box" @click="showBotPopup = true">
+          <span class="action-icon">🤖</span>
+          <span class="action-label">添加机器人</span>
+          <span class="action-arrow">›</span>
         </div>
+        <div class="action-btn card-box" @click="showChipsPopup = true">
+          <span class="action-icon">💰</span>
+          <span class="action-label">初始筹码</span>
+          <span class="action-val gold">{{ startChips.toLocaleString() }}</span>
+          <span class="action-arrow">›</span>
+        </div>
+      </div>
 
-        <!-- 筹码设置 -->
-        <div class="chips-setting card-box">
-          <p class="chips-setting-label">初始筹码</p>
+      <!-- 添加机器人弹出卡片 -->
+      <van-popup
+        v-model:show="showBotPopup"
+        position="bottom"
+        round
+        :style="{ maxWidth: '480px', margin: '0 auto' }"
+      >
+        <div class="popup-card">
+          <div class="popup-header">
+            <span class="popup-title">🤖 添加机器人</span>
+            <span class="popup-close" @click="showBotPopup = false">✕</span>
+          </div>
+          <p class="popup-desc">选择机器人难度后点击添加</p>
+          <div class="bot-level-select">
+            <div
+              v-for="opt in botLevelOptions"
+              :key="opt.value"
+              class="level-option"
+              :class="{ selected: selectedBotLevel === opt.value }"
+              @click="selectedBotLevel = opt.value"
+            >
+              <span class="level-emoji">{{ opt.emoji }}</span>
+              <span class="level-text">{{ opt.label }}</span>
+            </div>
+          </div>
+          <van-button
+            block round size="large"
+            class="popup-confirm-btn btn-bot"
+            :disabled="room.players && players.length >= room.maxPlayers"
+            @click="addBotAndClose"
+          >
+            + 添加机器人
+          </van-button>
+          <p v-if="players.length >= room.maxPlayers" class="popup-hint">房间已满，无法继续添加</p>
+        </div>
+      </van-popup>
+
+      <!-- 初始筹码弹出卡片 -->
+      <van-popup
+        v-model:show="showChipsPopup"
+        position="bottom"
+        round
+        :style="{ maxWidth: '480px', margin: '0 auto' }"
+      >
+        <div class="popup-card">
+          <div class="popup-header">
+            <span class="popup-title">💰 初始筹码</span>
+            <span class="popup-close" @click="showChipsPopup = false">✕</span>
+          </div>
+          <p class="popup-desc">选择每位玩家的初始筹码数量</p>
           <div class="chips-options">
             <div
               v-for="amount in chipOptions"
@@ -134,8 +162,15 @@
               {{ amount.toLocaleString() }}
             </div>
           </div>
+          <van-button
+            block round size="large"
+            class="popup-confirm-btn btn-chips"
+            @click="showChipsPopup = false"
+          >
+            确认
+          </van-button>
         </div>
-      </template>
+      </van-popup>
 
       <!-- 底部操作（固定在屏幕底部，只放按钮） -->
       <div class="room-footer">
@@ -182,10 +217,12 @@ const chipOptions = [500, 1000, 2000, 5000]
 // 机器人相关
 const selectedBotLevel = ref('easy')
 const botLevelOptions = [
-  { label: '简单', value: 'easy' },
-  { label: '中等', value: 'medium' },
-  { label: '困难', value: 'hard' }
+  { label: '简单', value: 'easy', emoji: '🟢' },
+  { label: '中等', value: 'medium', emoji: '🟡' },
+  { label: '困难', value: 'hard', emoji: '🔴' }
 ]
+const showBotPopup = ref(false)
+const showChipsPopup = ref(false)
 
 // 房间数据（由 socket 同步）
 const room = reactive({
@@ -219,6 +256,11 @@ function addBot() {
     return
   }
   getSocket().emit('room:add_bot', { level: selectedBotLevel.value })
+}
+
+function addBotAndClose() {
+  addBot()
+  // 添加成功后不立即关闭，方便连续添加多个机器人
 }
 
 function removeBot(botId) {
@@ -596,17 +638,120 @@ function handleBack() {
   font-size: 13px;
 }
 
-/* 机器人添加区块 */
-.bot-section {
-  padding: 12px 14px;
+/* 房主快捷操作按钮 */
+.owner-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   margin-top: 16px;
+  margin-bottom: 100px;
 }
 
-/* 筹码设置 */
-.chips-setting {
-  padding: 12px 14px;
-  margin-top: 10px;
-  margin-bottom: 100px; /* 为底部固定按钮留出空间 */
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-btn:active {
+  transform: scale(0.98);
+  opacity: 0.85;
+}
+
+.action-icon {
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.action-label {
+  flex: 1;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.action-val {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.action-arrow {
+  color: rgba(255,255,255,0.3);
+  font-size: 20px;
+  font-weight: 300;
+  margin-left: 4px;
+}
+
+/* 弹出卡片通用 */
+.popup-card {
+  padding: 24px 20px;
+  background: #1a1a2e;
+}
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.popup-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.popup-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.5);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.popup-close:active {
+  background: rgba(255,255,255,0.15);
+}
+
+.popup-desc {
+  color: rgba(255,255,255,0.4);
+  font-size: 13px;
+  margin: 0 0 18px;
+}
+
+.popup-confirm-btn {
+  margin-top: 20px;
+  height: 48px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+}
+
+.btn-bot {
+  background: rgba(100,180,255,0.2) !important;
+  border-color: rgba(100,180,255,0.5) !important;
+  color: #64b4ff !important;
+}
+
+.btn-chips {
+  background: rgba(245,200,66,0.2) !important;
+  border-color: rgba(245,200,66,0.5) !important;
+  color: #f5c842 !important;
+}
+
+.popup-hint {
+  color: rgba(255,255,255,0.35);
+  font-size: 12px;
+  text-align: center;
+  margin: 10px 0 0;
 }
 
 /* 底部 */
@@ -628,36 +773,26 @@ function handleBack() {
   margin: 0 0 8px;
 }
 
-.bot-section-label {
-  color: rgba(255,255,255,0.55);
-  font-size: 12px;
-  margin: 0 0 8px;
-}
-
-.bot-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
+/* 机器人难度选择 */
 .bot-level-select {
   display: flex;
-  gap: 6px;
-  flex: 1;
+  gap: 10px;
 }
 
 .level-option {
   flex: 1;
-  padding: 6px 0;
+  padding: 14px 8px;
   text-align: center;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: 12px;
   cursor: pointer;
   background: rgba(255,255,255,0.06);
-  border: 1.5px solid transparent;
+  border: 2px solid transparent;
   color: rgba(255,255,255,0.6);
   transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 }
 
 .level-option.selected {
@@ -666,33 +801,27 @@ function handleBack() {
   color: #64b4ff;
 }
 
-.btn-add-bot {
-  background: rgba(100,180,255,0.15) !important;
-  border-color: rgba(100,180,255,0.4) !important;
-  color: #64b4ff !important;
-  font-size: 12px !important;
-  white-space: nowrap;
-  flex-shrink: 0;
+.level-emoji {
+  font-size: 24px;
 }
 
-.chips-setting-label {
-  color: rgba(255,255,255,0.55);
-  font-size: 12px;
-  margin: 0 0 8px;
+.level-text {
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .chips-options {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
 }
 
 .chip-option {
-  padding: 8px 0;
+  padding: 16px 0;
   text-align: center;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 600;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
   cursor: pointer;
   background: rgba(255,255,255,0.06);
   border: 2px solid transparent;
@@ -704,6 +833,10 @@ function handleBack() {
   border-color: #f5c842;
   background: rgba(245,200,66,0.15);
   color: #f5c842;
+}
+
+.chip-option:active {
+  transform: scale(0.96);
 }
 
 .start-btn {

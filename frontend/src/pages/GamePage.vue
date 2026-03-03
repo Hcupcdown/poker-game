@@ -221,7 +221,18 @@ function backToRoom() {
 
 // ====== 计算属性 ======
 const me = computed(() => gameState.value.players.find(p => p.id === store.player?.id))
-const opponents = computed(() => gameState.value.players.filter(p => p.id !== store.player?.id))
+// 按真实座位顺序排列对手：从"我"的下一位开始顺时针排列
+const opponents = computed(() => {
+  const players = gameState.value.players
+  if (!players || !players.length) return []
+  const myIdx = players.findIndex(p => p.id === store.player?.id)
+  if (myIdx === -1) return players // 找不到自己则返回原列表
+  const result = []
+  for (let i = 1; i < players.length; i++) {
+    result.push(players[(myIdx + i) % players.length])
+  }
+  return result
+})
 const myCards = computed(() => me.value?.cards || [])
 const myChips = computed(() => me.value?.chips || 0)
 const myCurrentBet = computed(() => me.value?.currentBet || 0)
@@ -496,50 +507,60 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-/* 根据人数动态定位 */
+/* 根据人数动态定位（顺时针：从"我"左侧开始，经上方到右侧）
+   seat-0 = 我的顺时针下一位，seat-N = 我的顺时针上一位 */
+
+/* 1个对手 → 正对面 */
 .seats-1 .seat-0 { top: 8%; left: 50%; transform: translateX(-50%); }
 
+/* 2个对手 → 左上、右上 */
 .seats-2 .seat-0 { top: 8%; left: 25%; }
 .seats-2 .seat-1 { top: 8%; right: 25%; transform: translateX(50%); }
 
-.seats-3 .seat-0 { top: 8%; left: 50%; transform: translateX(-50%); }
-.seats-3 .seat-1 { top: 35%; left: 4%; }
+/* 3个对手 → 左中、正上、右中 */
+.seats-3 .seat-0 { top: 35%; left: 4%; }
+.seats-3 .seat-1 { top: 8%; left: 50%; transform: translateX(-50%); }
 .seats-3 .seat-2 { top: 35%; right: 4%; }
 
-.seats-4 .seat-0 { top: 5%; left: 20%; }
-.seats-4 .seat-1 { top: 5%; right: 20%; }
-.seats-4 .seat-2 { top: 35%; left: 2%; }
+/* 4个对手 → 左中、左上、右上、右中 */
+.seats-4 .seat-0 { top: 35%; left: 2%; }
+.seats-4 .seat-1 { top: 5%; left: 20%; }
+.seats-4 .seat-2 { top: 5%; right: 20%; }
 .seats-4 .seat-3 { top: 35%; right: 2%; }
 
-.seats-5 .seat-0 { top: 5%; left: 50%; transform: translateX(-50%); }
+/* 5个对手 → 左中、左上、正上、右上、右中 */
+.seats-5 .seat-0 { top: 40%; left: 2%; }
 .seats-5 .seat-1 { top: 5%; left: 15%; }
-.seats-5 .seat-2 { top: 5%; right: 15%; }
-.seats-5 .seat-3 { top: 40%; left: 2%; }
+.seats-5 .seat-2 { top: 5%; left: 50%; transform: translateX(-50%); }
+.seats-5 .seat-3 { top: 5%; right: 15%; }
 .seats-5 .seat-4 { top: 40%; right: 2%; }
 
-.seats-6 .seat-0 { top: 4%; left: 50%; transform: translateX(-50%); }
+/* 6个对手 */
+.seats-6 .seat-0 { top: 38%; left: 2%; }
 .seats-6 .seat-1 { top: 4%; left: 20%; }
-.seats-6 .seat-2 { top: 4%; right: 20%; }
-.seats-6 .seat-3 { top: 38%; left: 2%; }
+.seats-6 .seat-2 { top: 4%; left: 50%; transform: translateX(-50%); }
+.seats-6 .seat-3 { top: 4%; right: 20%; }
 .seats-6 .seat-4 { top: 38%; right: 2%; }
-.seats-6 .seat-5 { top: 65%; left: 10%; }
+.seats-6 .seat-5 { top: 65%; right: 10%; }
 
-.seats-7 .seat-0 { top: 4%; left: 50%; transform: translateX(-50%); }
+/* 7个对手 */
+.seats-7 .seat-0 { top: 35%; left: 2%; }
 .seats-7 .seat-1 { top: 4%; left: 18%; }
-.seats-7 .seat-2 { top: 4%; right: 18%; }
-.seats-7 .seat-3 { top: 35%; left: 2%; }
+.seats-7 .seat-2 { top: 4%; left: 50%; transform: translateX(-50%); }
+.seats-7 .seat-3 { top: 4%; right: 18%; }
 .seats-7 .seat-4 { top: 35%; right: 2%; }
-.seats-7 .seat-5 { top: 62%; left: 6%; }
-.seats-7 .seat-6 { top: 62%; right: 6%; }
+.seats-7 .seat-5 { top: 62%; right: 6%; }
+.seats-7 .seat-6 { top: 62%; left: 6%; }
 
-.seats-8 .seat-0 { top: 4%; left: 50%; transform: translateX(-50%); }
+/* 8个对手 */
+.seats-8 .seat-0 { top: 32%; left: 1%; }
 .seats-8 .seat-1 { top: 4%; left: 14%; }
-.seats-8 .seat-2 { top: 4%; right: 14%; }
-.seats-8 .seat-3 { top: 32%; left: 1%; }
+.seats-8 .seat-2 { top: 4%; left: 50%; transform: translateX(-50%); }
+.seats-8 .seat-3 { top: 4%; right: 14%; }
 .seats-8 .seat-4 { top: 32%; right: 1%; }
-.seats-8 .seat-5 { top: 58%; left: 3%; }
-.seats-8 .seat-6 { top: 58%; right: 3%; }
-.seats-8 .seat-7 { top: 65%; left: 35%; }
+.seats-8 .seat-5 { top: 58%; right: 3%; }
+.seats-8 .seat-6 { top: 65%; left: 35%; }
+.seats-8 .seat-7 { top: 58%; left: 3%; }
 
 /* ===== 行动 Toast ===== */
 .action-toast {
