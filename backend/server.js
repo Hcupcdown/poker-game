@@ -75,8 +75,15 @@ function triggerBotActionIfNeeded(room) {
     botThinkingTimers.delete(currentId)
   }
 
-  // 随机延迟 1000~3000ms 模拟思考
-  const thinkMs = 1000 + Math.floor(Math.random() * 2000)
+  // 根据难度和游戏阶段动态调整思考时间，模拟真实玩家
+  const level = bot.level || 'easy'
+  const phase = room.gameState.phase || 'preflop'
+  // Easy 快速决策，Hard 需要更多思考时间；后期阶段比翻牌前思考更久
+  const baseTime = { easy: 800, medium: 1200, hard: 1800 }[level] || 1000
+  const phaseExtra = { preflop: 0, flop: 400, turn: 600, river: 800 }[phase] || 0
+  const randomJitter = Math.floor(Math.random() * 1200)
+  const thinkMs = baseTime + phaseExtra + randomJitter
+
   const timer = setTimeout(() => {
     botThinkingTimers.delete(currentId)
 
@@ -88,7 +95,7 @@ function triggerBotActionIfNeeded(room) {
     try {
       const gameStateForBot = room.getGameStateForPlayer(currentId)
       const action = bot.decideAction(gameStateForBot, currentId, room.bigBlind)
-      console.log(`[Bot] ${bot.nickname}(${bot.level}) 行动: ${action.type} ${action.amount || ''}`)
+      console.log(`[Bot] ${bot.nickname}(${bot.level}) 行动: ${action.type} ${action.amount || ''} [phase=${phase}, thinkMs=${thinkMs}]`)
       room.handlePlayerAction(currentId, action.type, action.amount)
     } catch (err) {
       console.error(`[Bot] ${currentId} 行动失败: ${err.message}`)
@@ -496,6 +503,14 @@ io.on('connection', (socket) => {
     const roomId = room.id
     console.log(`[Game] 房间 ${roomId} 即将开始，玩家: ${room.players.map(p => p.nickname).join(', ')}`)
 
+    // 重置所有机器人每局状态
+    for (const p of room.players) {
+      if (p.isBot) {
+        const bot = bots.get(p.id)
+        if (bot && bot.resetRound) bot.resetRound()
+      }
+    }
+
     // 通知所有非机器人玩家跳转到游戏页面
     io.to(roomId).emit('game:ready', { roomId })
 
@@ -694,6 +709,14 @@ io.on('connection', (socket) => {
         })
         io.to(room.id).emit('room:update', { room: room.getRoomInfo() })
         return
+      }
+
+      // 重置所有机器人每局状态
+      for (const p of room.players) {
+        if (p.isBot) {
+          const bot = bots.get(p.id)
+          if (bot && bot.resetRound) bot.resetRound()
+        }
       }
 
       // 开始下一轮

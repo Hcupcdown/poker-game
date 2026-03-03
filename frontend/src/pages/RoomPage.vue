@@ -57,10 +57,7 @@
                   {{ p.nickname }}
                   <span v-if="p.isBot" class="bot-badge">🤖 Bot</span>
                   <span v-if="p.id === room.ownerId && !p.isBot" class="owner-badge">房主</span>
-                  <span v-if="p.id === store.player?.id" class="me-badge">我</span>
-                </div>
-                <div v-if="p.isBot && p.botLevel" class="bot-level-text">
-                  {{ { easy: '简单', medium: '中等', hard: '困难' }[p.botLevel] || p.botLevel }} 难度
+                <span v-if="p.id === store.player?.id" class="me-badge">我</span>
                 </div>
               </div>
               <div class="player-right">
@@ -505,12 +502,6 @@ function handleBack() {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-}
-
-.bot-level-text {
-  color: rgba(100,180,255,0.7);
-  font-size: 11px;
-  margin-top: 2px;
 }
 
 .owner-badge {

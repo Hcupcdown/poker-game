@@ -6,8 +6,24 @@
       { 'is-folded': player.status === 'folded' }
     ]"
   >
-    <!-- 当前行动指示器 -->
-    <div v-if="player.id === currentPlayerId" class="turn-ring"></div>
+    <!-- 当前行动指示器（倒计时光圈） -->
+    <svg v-if="player.id === currentPlayerId" class="turn-timer-ring" viewBox="0 0 52 52">
+      <!-- 底环（暗色背景） -->
+      <circle cx="26" cy="26" r="23" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"/>
+      <!-- 倒计时弧线 -->
+      <circle
+        cx="26" cy="26" r="23" fill="none"
+        :stroke="timerColor"
+        stroke-width="3"
+        :stroke-dasharray="circumference"
+        :stroke-dashoffset="circumference - (circumference * timerProgress / 100)"
+        stroke-linecap="round"
+        transform="rotate(-90 26 26)"
+        class="timer-arc"
+      />
+      <!-- 外发光 -->
+      <circle cx="26" cy="26" r="24.5" fill="none" :stroke="timerGlowColor" stroke-width="1" class="timer-glow"/>
+    </svg>
 
     <!-- 玩家头像 -->
     <div class="opp-avatar-wrap">
@@ -39,28 +55,37 @@
     <!-- ALL IN 标记 -->
     <div v-if="player.status === 'allin'" class="allin-badge">ALL IN</div>
 
-    <!-- 倒计时环 -->
-    <svg v-if="player.id === currentPlayerId" class="timer-ring" viewBox="0 0 36 36">
-      <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
-      <circle
-        cx="18" cy="18" r="15.9" fill="none"
-        stroke="#f5c842" stroke-width="2"
-        stroke-dasharray="100" :stroke-dashoffset="100 - timerProgress"
-        stroke-linecap="round"
-        transform="rotate(-90 18 18)"
-      />
-    </svg>
+
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { PLAYER_STATUS_COLORS } from '../../utils/cardUtils'
 
-defineProps({
+const props = defineProps({
   player: { type: Object, required: true },
   currentPlayerId: { type: String, default: null },
   displayBet: { type: Number, default: 0 },
   timerProgress: { type: Number, default: 100 }
+})
+
+// 圆环周长
+const circumference = computed(() => 2 * Math.PI * 23)
+
+// 颜色根据倒计时进度变化：充裕时金色 → 中等时橙色 → 紧急时红色
+const timerColor = computed(() => {
+  const p = props.timerProgress
+  if (p > 50) return '#f5c842'
+  if (p > 25) return '#f59e42'
+  return '#e74c3c'
+})
+
+const timerGlowColor = computed(() => {
+  const p = props.timerProgress
+  if (p > 50) return 'rgba(245,200,66,0.3)'
+  if (p > 25) return 'rgba(245,158,66,0.3)'
+  return 'rgba(231,76,60,0.4)'
 })
 </script>
 
@@ -216,37 +241,31 @@ defineProps({
 }
 
 .is-turn {
-  filter: drop-shadow(0 0 12px rgba(245,200,66,0.7)) !important;
+  filter: drop-shadow(0 0 12px rgba(245,200,66,0.5)) !important;
 }
 
-.turn-ring {
+.turn-timer-ring {
   position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  border: 2px solid #f5c842;
-  animation: turnPulse 1s infinite ease-in-out;
-  pointer-events: none;
+  width: 52px;
+  height: 52px;
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 10;
-  width: 50px;
-  height: 50px;
-  left: 50%;
-  top: 0;
-  transform: translateX(-50%);
-}
-
-@keyframes turnPulse {
-  0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
-  50% { opacity: 0.5; transform: translateX(-50%) scale(1.1); }
-}
-
-.timer-ring {
-  position: absolute;
-  width: 50px;
-  height: 50px;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 11;
   pointer-events: none;
+}
+
+.timer-arc {
+  transition: stroke-dashoffset 1s linear, stroke 0.5s ease;
+}
+
+.timer-glow {
+  transition: stroke 0.5s ease;
+  animation: glowPulse 2s infinite ease-in-out;
+}
+
+@keyframes glowPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 </style>
