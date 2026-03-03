@@ -53,7 +53,7 @@ const botThinkingTimers = new Map()
 
 // 机器人名字和头像池
 const BOT_NAMES = ['小明机器人', '智能选手', 'AI玩家', '扑克机器人', '智慧Bot', '策略大师']
-const BOT_AVATARS = ['🤖', '🦾', '⚡', '🎯', '🔥', '💡']
+const BOT_AVATARS = ['🤖']
 
 /**
  * 检查游戏状态中当前行动者是否为机器人，如果是则触发自动行动
@@ -106,6 +106,9 @@ function triggerBotActionIfNeeded(room) {
         console.error(`[Bot] ${currentId} 弃牌也失败: ${e2.message}`)
       }
     }
+
+    // 链式调用：Bot 行动后检查下一个行动者是否也是机器人
+    triggerBotActionIfNeeded(room)
   }, thinkMs)
 
   botThinkingTimers.set(currentId, timer)
@@ -286,6 +289,9 @@ io.on('connection', (socket) => {
     const { smallBlind = 10, bigBlind = 20, maxPlayers = 6 } = data || {}
 
     const room = new GameRoom({ id: roomCode, ownerId: playerId, smallBlind, bigBlind, maxPlayers, io })
+    // 注册回调：阶段切换 / 超时弃牌 后触发机器人行动
+    room.onPhaseAdvanced = (r) => triggerBotActionIfNeeded(r)
+    room.onActionTimeout = (r) => triggerBotActionIfNeeded(r)
     rooms.set(roomCode, room)
     room.addPlayer(player, socket)
     socket.join(roomCode)

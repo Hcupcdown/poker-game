@@ -92,50 +92,54 @@
         </div>
       </div>
 
-      <!-- 底部操作 -->
+      <!-- 房主设置区（在主内容流中，可正常滚动） -->
+      <template v-if="isOwner">
+        <!-- 添加机器人区块 -->
+        <div class="bot-section card-box">
+          <p class="bot-section-label">🤖 添加机器人</p>
+          <div class="bot-controls">
+            <div class="bot-level-select">
+              <div
+                v-for="opt in botLevelOptions"
+                :key="opt.value"
+                class="level-option"
+                :class="{ selected: selectedBotLevel === opt.value }"
+                @click="selectedBotLevel = opt.value"
+              >
+                {{ opt.label }}
+              </div>
+            </div>
+            <van-button
+              size="small"
+              class="btn-add-bot"
+              :disabled="room.players && players.length >= room.maxPlayers"
+              @click="addBot"
+            >
+              + 添加机器人
+            </van-button>
+          </div>
+        </div>
+
+        <!-- 筹码设置 -->
+        <div class="chips-setting card-box">
+          <p class="chips-setting-label">初始筹码</p>
+          <div class="chips-options">
+            <div
+              v-for="amount in chipOptions"
+              :key="amount"
+              class="chip-option"
+              :class="{ selected: startChips === amount }"
+              @click="startChips = amount"
+            >
+              {{ amount.toLocaleString() }}
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- 底部操作（固定在屏幕底部，只放按钮） -->
       <div class="room-footer">
         <template v-if="isOwner">
-          <!-- 添加机器人区块（仅房主可见） -->
-          <div class="bot-section card-box">
-            <p class="bot-section-label">🤖 添加机器人</p>
-            <div class="bot-controls">
-              <div class="bot-level-select">
-                <div
-                  v-for="opt in botLevelOptions"
-                  :key="opt.value"
-                  class="level-option"
-                  :class="{ selected: selectedBotLevel === opt.value }"
-                  @click="selectedBotLevel = opt.value"
-                >
-                  {{ opt.label }}
-                </div>
-              </div>
-              <van-button
-                size="small"
-                class="btn-add-bot"
-                :disabled="room.players && players.length >= room.maxPlayers"
-                @click="addBot"
-              >
-                + 添加机器人
-              </van-button>
-            </div>
-          </div>
-
-          <!-- 筹码设置（仅房主可见） -->
-          <div class="chips-setting card-box">
-            <p class="chips-setting-label">初始筹码</p>
-            <div class="chips-options">
-              <div
-                v-for="amount in chipOptions"
-                :key="amount"
-                class="chip-option"
-                :class="{ selected: startChips === amount }"
-                @click="startChips = amount"
-              >
-                {{ amount.toLocaleString() }}
-              </div>
-            </div>
-          </div>
           <p class="start-hint" v-if="players.length < 2">至少需要 2 名玩家才能开始</p>
           <p class="start-hint offline-warning" v-else-if="hasOfflinePlayers">⚠️ {{ offlineNames }} 当前不在线，无法开始</p>
           <van-button
@@ -592,6 +596,19 @@ function handleBack() {
   font-size: 13px;
 }
 
+/* 机器人添加区块 */
+.bot-section {
+  padding: 12px 14px;
+  margin-top: 16px;
+}
+
+/* 筹码设置 */
+.chips-setting {
+  padding: 12px 14px;
+  margin-top: 10px;
+  margin-bottom: 100px; /* 为底部固定按钮留出空间 */
+}
+
 /* 底部 */
 .room-footer {
   position: fixed;
@@ -609,12 +626,6 @@ function handleBack() {
   font-size: 13px;
   text-align: center;
   margin: 0 0 8px;
-}
-
-/* 机器人添加区块 */
-.bot-section {
-  padding: 12px 14px;
-  margin-bottom: 10px;
 }
 
 .bot-section-label {
@@ -662,12 +673,6 @@ function handleBack() {
   font-size: 12px !important;
   white-space: nowrap;
   flex-shrink: 0;
-}
-
-/* 房主筹码设置 */
-.chips-setting {
-  padding: 12px 14px;
-  margin-bottom: 12px;
 }
 
 .chips-setting-label {

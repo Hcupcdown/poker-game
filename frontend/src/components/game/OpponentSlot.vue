@@ -60,29 +60,88 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import { PLAYER_STATUS_COLORS } from '../../utils/cardUtils'
 
 const props = defineProps({
   player: { type: Object, required: true },
   currentPlayerId: { type: String, default: null },
   displayBet: { type: Number, default: 0 },
-  timerProgress: { type: Number, default: 100 }
+  actionDeadline: { type: Number, default: null },   // 服务端行动截止时间戳（ms）
+  actionDuration: { type: Number, default: 30000 }    // 行动总时长（ms）
 })
 
 // 圆环周长
 const circumference = computed(() => 2 * Math.PI * 23)
 
+// 内部倒计时进度（0~100）
+const timerProgress = ref(100)
+let timerInterval = null
+
+function startCountdown() {
+  stopCountdown()
+  if (!props.actionDeadline) {
+    timerProgress.value = 100
+    return
+  }
+  // 立即计算一次
+  updateProgress()
+  // 每 100ms 更新一次，保证动画流畅
+  timerInterval = setInterval(updateProgress, 100)
+}
+
+function updateProgress() {
+  if (!props.actionDeadline) {
+    timerProgress.value = 100
+    stopCountdown()
+    return
+  }
+  const now = Date.now()
+  const remaining = props.actionDeadline - now
+  const duration = props.actionDuration || 30000
+  if (remaining <= 0) {
+    timerProgress.value = 0
+    stopCountdown()
+  } else {
+    timerProgress.value = Math.min(100, (remaining / duration) * 100)
+  }
+}
+
+function stopCountdown() {
+  if (timerInterval) {
+    clearInterval(timerInterval)
+    timerInterval = null
+  }
+}
+
+// 当该对手成为/不再是当前行动者，或 deadline 变化时，重新启动倒计时
+watch(
+  () => props.player.id === props.currentPlayerId ? props.actionDeadline : null,
+  (newVal) => {
+    if (newVal) {
+      startCountdown()
+    } else {
+      stopCountdown()
+      timerProgress.value = 100
+    }
+  },
+  { immediate: true }
+)
+
+onUnmounted(() => {
+  stopCountdown()
+})
+
 // 颜色根据倒计时进度变化：充裕时金色 → 中等时橙色 → 紧急时红色
 const timerColor = computed(() => {
-  const p = props.timerProgress
+  const p = timerProgress.value
   if (p > 50) return '#f5c842'
   if (p > 25) return '#f59e42'
   return '#e74c3c'
 })
 
 const timerGlowColor = computed(() => {
-  const p = props.timerProgress
+  const p = timerProgress.value
   if (p > 50) return 'rgba(245,200,66,0.3)'
   if (p > 25) return 'rgba(245,158,66,0.3)'
   return 'rgba(231,76,60,0.4)'
@@ -256,7 +315,7 @@ const timerGlowColor = computed(() => {
 }
 
 .timer-arc {
-  transition: stroke-dashoffset 1s linear, stroke 0.5s ease;
+  transition: stroke-dashoffset 0.15s linear, stroke 0.5s ease;
 }
 
 .timer-glow {

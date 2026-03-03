@@ -68,6 +68,11 @@ class GameRoom {
 
     // 断线缓冲计时器 { playerId: timeoutId }
     this.disconnectTimers = {}
+
+    // 回调钩子：阶段切换后通知外部（server.js 用于触发机器人行动）
+    this.onPhaseAdvanced = null
+    // 回调钩子：超时弃牌后通知外部
+    this.onActionTimeout = null
   }
 
   // ============================
@@ -270,6 +275,9 @@ class GameRoom {
     }
     gs.currentPlayerId = gs.players[firstIdx].id
 
+    // 先启动行动超时计时器（设置 actionDeadline），再广播，确保前端收到的状态包含正确的截止时间
+    this._startActionTimer()
+
     // 广播
     if (isFirstRound) {
       console.log(`[Game] 广播 game:start（首局）`)
@@ -278,9 +286,6 @@ class GameRoom {
       console.log(`[Game] 广播 game:next_round_start（续局）`)
       this._broadcastNextRoundStart()
     }
-
-    // 启动行动超时计时器
-    this._startActionTimer()
 
     console.log(`[Game] 房间 ${this.id} 新局开始，庄家: ${gs.players[dealerIdx].nickname}，小盲: ${gs.players[sbIdx].nickname}，大盲: ${gs.players[bbIdx].nickname}`)
   }
@@ -560,8 +565,11 @@ class GameRoom {
       }
 
       this._setFirstActivePlayerAfterDealer()
-      this._broadcastGameState()
       this._startActionTimer()
+      this._broadcastGameState()
+
+      // 通知外部（server.js）阶段已切换，可能需要触发机器人行动
+      if (this.onPhaseAdvanced) this.onPhaseAdvanced(this)
     }, 600)
   }
 
@@ -591,8 +599,8 @@ class GameRoom {
     }
 
     gs.currentPlayerId = players[nextIdx].id
-    this._broadcastGameState()
     this._startActionTimer()
+    this._broadcastGameState()
   }
 
   _setFirstActivePlayerAfterDealer() {
@@ -743,6 +751,8 @@ class GameRoom {
 
   _startActionTimer() {
     this.clearActionTimer()
+    // 记录行动截止时间戳，供前端倒计时使用
+    this.actionDeadline = Date.now() + ACTION_TIMEOUT_MS
     this.actionTimer = setTimeout(() => {
       const gs = this.gameState
       if (!gs || !gs.currentPlayerId) return
@@ -755,7 +765,11 @@ class GameRoom {
       gs.lastAction = { type: 'fold', name: player.nickname + '(超时)', amount: 0, playerId: player.id }
       player.hasActed = true
       this.io.to(this.id).emit('player:action:log', { msg: `${player.nickname} 超时自动弃牌` })
+      this._broadcastGameState()
       this._checkRoundEnd()
+
+      // 超时弃牌后通知外部，可能需要触发下一个机器人行动
+      if (this.onActionTimeout) this.onActionTimeout(this)
     }, ACTION_TIMEOUT_MS)
   }
 
@@ -764,6 +778,7 @@ class GameRoom {
       clearTimeout(this.actionTimer)
       this.actionTimer = null
     }
+    this.actionDeadline = null
   }
 
   // ============================
@@ -830,6 +845,9 @@ class GameRoom {
     if (!gs) return null
     return {
       ...gs,
+      // 行动截止时间戳和总时长，供前端所有客户端计算倒计时进度
+      actionDeadline: this.actionDeadline || null,
+      actionDuration: ACTION_TIMEOUT_MS,
       players: gs.players.map(p => ({
         ...p,
         cards: p.id === playerId ? p.cards : (p.status !== 'folded' ? ['back', 'back'] : [])

@@ -744,7 +744,9 @@ class BotPlayer {
     const potBased = Math.floor(pot * ratio)
     // 至少 1 个大盲，至多不超过可用筹码
     const amount = Math.max(bigBlind, potBased)
-    return Math.min(amount, availableChips)
+    const capped = Math.min(amount, availableChips)
+    // 取整为 10 的倍数（向下取整，至少 10）
+    return Math.max(10, Math.floor(capped / 10) * 10)
   }
 
   // ============================
@@ -774,7 +776,10 @@ class BotPlayer {
           return canCheck ? { type: 'check', amount: 0 } : { type: 'call', amount: callAmount }
         }
         if (amount >= me.chips) return { type: 'allin', amount: me.chips }
-        return { type: 'raise', amount: Math.max(bigBlind, amount) }
+        // 确保加注额是 10 的倍数
+        const roundedAmt = Math.max(bigBlind, Math.floor(amount / 10) * 10)
+        if (roundedAmt >= me.chips) return { type: 'allin', amount: me.chips }
+        return { type: 'raise', amount: roundedAmt }
       case 'allin':
         return { type: 'allin', amount: me.chips }
       default:

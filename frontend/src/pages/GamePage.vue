@@ -52,7 +52,8 @@
           :player="p"
           :current-player-id="gameState.currentPlayerId"
           :display-bet="getDisplayBet(p.id)"
-          :timer-progress="timerProgress"
+          :action-deadline="gameState.actionDeadline"
+          :action-duration="gameState.actionDuration"
           :class="['seat-' + i]"
           :style="{ position: 'absolute' }"
         />
