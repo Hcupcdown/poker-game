@@ -66,7 +66,6 @@
         :deck-visible="deckVisible"
         :deck-card-count="deckCardCount"
         :community-slots="communitySlots"
-        :last-action="lastAction"
       />
     </div>
 

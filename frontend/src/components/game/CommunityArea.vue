@@ -53,19 +53,11 @@
       </div>
     </div>
 
-    <!-- 最后操作提示 -->
-    <div class="last-action" v-if="lastAction">
-      <span class="last-action-text">
-        {{ lastAction.name }} {{ ACTION_NAMES[lastAction.type] }}
-        <span v-if="lastAction.amount" class="gold"> {{ lastAction.amount }}</span>
-      </span>
-    </div>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
-import { ACTION_NAMES } from '../../constants/handRules'
 import { useCardDisplay } from '../../composables/useCardDisplay'
 
 const { getCardRank, getCardSuit, isRedCard } = useCardDisplay()
@@ -74,8 +66,7 @@ const props = defineProps({
   pot: { type: Number, default: 0 },
   deckVisible: { type: Boolean, default: true },
   deckCardCount: { type: Number, default: 0 },
-  communitySlots: { type: Array, default: () => [] },
-  lastAction: { type: Object, default: null }
+  communitySlots: { type: Array, default: () => [] }
 })
 
 // 暴露牌堆 DOM ref 供父组件获取（用于发牌动画定位）
@@ -317,18 +308,4 @@ defineExpose({ deckEl })
   justify-content: center;
 }
 
-.last-action {
-  background: rgba(0,0,0,0.4);
-  border-radius: 16px;
-  padding: 4px 14px;
-}
-
-.last-action-text {
-  color: rgba(255,255,255,0.7);
-  font-size: 12px;
-}
-
-.gold {
-  color: #f5c842;
-}
 </style>

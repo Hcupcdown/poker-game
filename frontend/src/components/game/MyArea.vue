@@ -25,7 +25,6 @@
             <!-- 背面 -->
             <div class="my-card face-back">
               <div class="card-back-pattern"></div>
-              <span class="back-icon">🂠</span>
               <span class="tap-hint">点击看牌</span>
             </div>
             <!-- 正面 -->
@@ -205,12 +204,6 @@ defineExpose({ myAreaRef, cardsContainer })
   border-radius: 5px;
   border: 1.5px solid rgba(255,255,255,0.2);
   background: repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.04) 4px, rgba(255,255,255,0.04) 8px);
-}
-
-.back-icon {
-  font-size: 36px;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
-  z-index: 1;
 }
 
 .tap-hint {
