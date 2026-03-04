@@ -8,16 +8,8 @@
       </span>
     </div>
 
-    <!-- 牌堆 -->
-    <div class="center-row">
-      <div class="deck-pile" ref="deckEl" :class="{ 'deck-hide': !deckVisible }">
-        <div v-for="n in 4" :key="n" class="deck-card" :style="{ '--i': n }"></div>
-        <div class="deck-top">
-          <div class="deck-back-pattern"></div>
-          <span class="deck-count">{{ deckCardCount }}</span>
-        </div>
-      </div>
-    </div>
+    <!-- 牌堆（隐藏，仅保留 ref 供发牌动画定位） -->
+    <div ref="deckEl" style="display:none"></div>
 
     <!-- 公共牌 -->
     <div class="community-cards">
@@ -85,12 +77,7 @@ defineExpose({ deckEl })
   position: relative;
 }
 
-.center-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-}
+
 
 .pot-display {
   display: flex;
@@ -134,63 +121,7 @@ defineExpose({ deckEl })
   margin-right: 3px;
 }
 
-/* 中央牌堆 */
-.deck-pile {
-  position: relative;
-  width: 44px;
-  height: 62px;
-  margin: 0 auto 8px;
-  cursor: default;
-  flex-shrink: 0;
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
 
-.deck-card {
-  position: absolute;
-  width: 44px;
-  height: 62px;
-  background: linear-gradient(135deg, #1a3a5c 0%, #0d2137 50%, #1a3a5c 100%);
-  border-radius: 6px;
-  border: 1.5px solid rgba(255,255,255,0.18);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-  transform: translate(calc(var(--i) * -1.2px), calc(var(--i) * -1.2px));
-}
-
-.deck-top {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, #1a3a5c 0%, #0d2137 50%, #1a3a5c 100%);
-  border-radius: 6px;
-  border: 1.5px solid rgba(255,255,255,0.25);
-  box-shadow: 0 4px 14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.1);
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.deck-back-pattern {
-  position: absolute;
-  inset: 4px;
-  border-radius: 3px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(255,255,255,0.05) 3px, rgba(255,255,255,0.05) 6px);
-}
-
-.deck-count {
-  position: relative;
-  z-index: 1;
-  color: rgba(255,255,255,0.55);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-
-.deck-hide {
-  opacity: 0;
-  transform: scale(0.5);
-  pointer-events: none;
-}
 
 /* 公共牌 */
 .community-cards {

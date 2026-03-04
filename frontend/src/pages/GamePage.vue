@@ -59,9 +59,10 @@
         />
       </div>
 
-      <!-- 公共牌区域 -->
+      <!-- 公共牌区域（绝对定位居中于圆形装饰中心） -->
       <CommunityArea
         ref="communityAreaRef"
+        class="community-center"
         :pot="gameState.pot"
         :deck-visible="deckVisible"
         :deck-card-count="deckCardCount"
@@ -487,17 +488,28 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   min-height: 0;
-  padding-top: 35%;
 }
 
 .table-area::before {
   content: '';
   position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: 80%;
   height: 70%;
   border-radius: 50%;
   border: 2px solid rgba(255,255,255,0.1);
   pointer-events: none;
+}
+
+/* 公共牌绝对定位居中于圆形装饰中心 */
+.community-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
 }
 
 /* ===== 对手环绕布局 ===== */
