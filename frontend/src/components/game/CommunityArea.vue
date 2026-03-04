@@ -2,7 +2,6 @@
   <div class="community-area">
     <!-- 底池（屏幕横向居中） -->
     <div class="pot-display" v-if="pot > 0">
-      <span class="pot-display-label">底池</span>
       <span class="pot-display-value">
         <img src="/pot-icon.png" class="chip-icon" />{{ pot.toLocaleString() }}
       </span>
@@ -93,6 +92,7 @@ defineExpose({ deckEl })
   align-items: center;
   justify-content: center;
   padding: 2px 0;
+  margin-top: 18px;
   z-index: 5;
   white-space: nowrap;
 }
@@ -182,8 +182,8 @@ defineExpose({ deckEl })
 
 .chip-icon {
   display: inline-block;
-  width: 24px;
-  height: 24px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
   vertical-align: middle;
   flex-shrink: 0;
