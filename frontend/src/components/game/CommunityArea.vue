@@ -1,19 +1,21 @@
 <template>
   <div class="community-area">
-    <!-- 底池（屏幕横向居中） -->
-    <div class="pot-display" v-if="pot > 0">
-      <span class="pot-display-value">
-        <img src="/pot-icon.png" class="chip-icon" />{{ pot.toLocaleString() }}
-      </span>
-    </div>
-
-    <!-- 牌堆 -->
+    <!-- 牌堆 + 底池（重叠在同一位置，牌堆消失后显示底池） -->
     <div class="center-row">
-      <div class="deck-pile" ref="deckEl" :class="{ 'deck-hide': !deckVisible }">
-        <div v-for="n in 4" :key="n" class="deck-card" :style="{ '--i': n }"></div>
-        <div class="deck-top">
-          <div class="deck-back-pattern"></div>
-          <span class="deck-count">{{ deckCardCount }}</span>
+      <div class="deck-pot-wrapper">
+        <!-- 底池（底层） -->
+        <div class="pot-display" v-if="pot > 0">
+          <span class="pot-display-value">
+            <img src="/pot-icon.png" class="chip-icon" />{{ pot.toLocaleString() }}
+          </span>
+        </div>
+        <!-- 牌堆（上层，发完牌消失后露出底池） -->
+        <div class="deck-pile" ref="deckEl" :class="{ 'deck-hide': !deckVisible }">
+          <div v-for="n in 4" :key="n" class="deck-card" :style="{ '--i': n }"></div>
+          <div class="deck-top">
+            <div class="deck-back-pattern"></div>
+            <span class="deck-count">{{ deckCardCount }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -86,15 +88,22 @@ defineExpose({ deckEl })
 
 
 
+.deck-pot-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 62px;
+}
+
 .pot-display {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2px 0;
-  margin-top: 18px;
-  z-index: 5;
   white-space: nowrap;
+  z-index: 1;
 }
 
 .pot-display-label {
@@ -113,12 +122,12 @@ defineExpose({ deckEl })
 
 /* 中央牌堆 */
 .deck-pile {
-  position: relative;
+  position: absolute;
   width: 44px;
   height: 62px;
-  margin: 0 auto 8px;
   cursor: default;
   flex-shrink: 0;
+  z-index: 2;
   transition: opacity 0.6s ease, transform 0.6s ease;
 }
 
