@@ -157,8 +157,11 @@ onMounted(() => {
     } catch (e) { /* ignore */ }
   }
 
-  // 确保 socket 已连接并认证
-  const socket = connectSocket(store.player)
+  // 确保 socket 已连接并认证（传入带 _token 的 player 对象）
+  const playerWithToken = store.player
+    ? { ...store.player, _token: store.token }
+    : store.player
+  const socket = connectSocket(playerWithToken)
 
   // 收到服务端确认后，同步更新本地 player（以后端 id 为准）
   socket.once('player:auth:ok', ({ player: serverPlayer }) => {

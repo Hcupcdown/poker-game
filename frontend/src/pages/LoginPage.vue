@@ -14,48 +14,124 @@
           <p class="logo-sub">和朋友一起玩德州扑克</p>
         </div>
 
-        <!-- 登录表单 -->
+        <!-- 登录/注册 Tab -->
         <transition name="slide-up">
           <div class="login-form card-box" v-if="showForm">
-            <h3 class="form-title">输入你的昵称</h3>
-
-            <!-- 昵称输入 -->
-            <van-field
-              v-model="nickname"
-              placeholder="给自己起个名字"
-              :maxlength="10"
-              clearable
-              class="nick-input"
-              @keyup.enter="handleLogin"
-            />
-
-            <!-- 头像选择 -->
-            <div class="avatar-section">
-              <p class="avatar-label">选个头像</p>
-              <div class="avatar-grid">
-                <div
-                  v-for="emoji in avatars"
-                  :key="emoji"
-                  class="avatar-item"
-                  :class="{ selected: selectedAvatar === emoji }"
-                  @click="selectedAvatar = emoji"
-                >
-                  {{ emoji }}
-                </div>
-              </div>
-            </div>
-
-            <van-button
-              type="primary"
-              block
-              round
-              size="large"
-              class="btn-green login-btn"
-              :loading="loading"
-              @click="handleLogin"
+            <van-tabs
+              v-model:active="activeTab"
+              class="auth-tabs"
+              color="#f5c842"
+              title-active-color="#f5c842"
+              title-inactive-color="rgba(255,255,255,0.5)"
+              background="transparent"
             >
-              进入游戏 →
-            </van-button>
+              <!-- ===== 登录 Tab ===== -->
+              <van-tab title="登录" name="login">
+                <div class="tab-content">
+                  <van-field
+                    v-model="loginForm.username"
+                    placeholder="用户名"
+                    left-icon="person-o"
+                    clearable
+                    class="auth-input"
+                    @keyup.enter="handleLogin"
+                  />
+                  <van-field
+                    v-model="loginForm.password"
+                    :type="showLoginPwd ? 'text' : 'password'"
+                    placeholder="密码"
+                    left-icon="lock"
+                    :right-icon="showLoginPwd ? 'eye-o' : 'closed-eye'"
+                    @click-right-icon="showLoginPwd = !showLoginPwd"
+                    class="auth-input"
+                    @keyup.enter="handleLogin"
+                  />
+                  <div class="remember-row">
+                    <van-checkbox
+                      v-model="rememberMe"
+                      icon-size="16px"
+                      checked-color="#f5c842"
+                    >
+                      <span class="remember-text">记住用户名</span>
+                    </van-checkbox>
+                  </div>
+                  <van-button
+                    type="primary"
+                    block
+                    round
+                    size="large"
+                    class="btn-green auth-btn"
+                    :loading="loginLoading"
+                    @click="handleLogin"
+                  >
+                    登录 →
+                  </van-button>
+                </div>
+              </van-tab>
+
+              <!-- ===== 注册 Tab ===== -->
+              <van-tab title="注册" name="register">
+                <div class="tab-content">
+                  <van-field
+                    v-model="regForm.username"
+                    placeholder="用户名（3-20位字母数字下划线）"
+                    left-icon="person-o"
+                    clearable
+                    class="auth-input"
+                  />
+                  <van-field
+                    v-model="regForm.password"
+                    :type="showRegPwd ? 'text' : 'password'"
+                    placeholder="密码（6-30位）"
+                    left-icon="lock"
+                    :right-icon="showRegPwd ? 'eye-o' : 'closed-eye'"
+                    @click-right-icon="showRegPwd = !showRegPwd"
+                    class="auth-input"
+                  />
+                  <van-field
+                    v-model="regForm.confirmPassword"
+                    :type="showRegPwd ? 'text' : 'password'"
+                    placeholder="确认密码"
+                    left-icon="lock"
+                    class="auth-input"
+                  />
+                  <van-field
+                    v-model="regForm.nickname"
+                    placeholder="昵称（最多10字）"
+                    :maxlength="10"
+                    left-icon="user-o"
+                    clearable
+                    class="auth-input"
+                  />
+                  <!-- 头像选择 -->
+                  <div class="avatar-section">
+                    <p class="avatar-label">选个头像</p>
+                    <div class="avatar-grid">
+                      <div
+                        v-for="emoji in avatars"
+                        :key="emoji"
+                        class="avatar-item"
+                        :class="{ selected: regForm.avatar === emoji }"
+                        @click="regForm.avatar = emoji"
+                      >
+                        {{ emoji }}
+                      </div>
+                    </div>
+                  </div>
+                  <van-button
+                    type="primary"
+                    block
+                    round
+                    size="large"
+                    class="btn-green auth-btn"
+                    :loading="regLoading"
+                    @click="handleRegister"
+                  >
+                    注册并登录 →
+                  </van-button>
+                </div>
+              </van-tab>
+            </van-tabs>
           </div>
         </transition>
       </div>
@@ -64,7 +140,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '../stores/gameStore'
 import { showToast } from 'vant'
@@ -72,42 +148,127 @@ import { showToast } from 'vant'
 const router = useRouter()
 const store = useGameStore()
 
-const nickname = ref('')
-const selectedAvatar = ref('🐼')
-const loading = ref(false)
+const activeTab = ref('login')
 const showForm = ref(false)
+
+// 登录表单
+const loginForm = reactive({ username: '', password: '' })
+const showLoginPwd = ref(false)
+const rememberMe = ref(false)
+const loginLoading = ref(false)
+
+// 注册表单
+const regForm = reactive({ username: '', password: '', confirmPassword: '', nickname: '', avatar: '🐼' })
+const showRegPwd = ref(false)
+const regLoading = ref(false)
 
 const avatars = ['🐼', '🦊', '🐯', '🦁', '🐻', '🐸', '🐺', '🦅', '🐉', '👾', '🤠', '😎']
 const bgCards = ['🂡', '🂱', '🃁', '🃑', '🂢', '🂲']
 
-onMounted(() => {
-  if (store.token && store.player) {
-    router.replace('/lobby')
-    return
+const BASE_URL = import.meta.env.DEV ? 'http://localhost:3000' : ''
+
+onMounted(async () => {
+  // 恢复记住的用户名
+  const savedUsername = localStorage.getItem('poker_remember_username')
+  if (savedUsername) {
+    loginForm.username = savedUsername
+    rememberMe.value = true
   }
+
+  // 如果有 token，验证是否有效
+  const token = store.token
+  if (token) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        // token 有效，直接更新 store 并跳转
+        store.setPlayer(data.user, token)
+        router.replace('/lobby')
+        return
+      } else {
+        // token 无效，清除
+        store.logout()
+      }
+    } catch (e) {
+      store.logout()
+    }
+  }
+
   setTimeout(() => { showForm.value = true }, 300)
 })
 
-function handleLogin() {
-  if (!nickname.value.trim()) {
-    showToast('请输入昵称')
+async function handleLogin() {
+  const { username, password } = loginForm
+  if (!username.trim()) { showToast('请输入用户名'); return }
+  if (!password) { showToast('请输入密码'); return }
+
+  loginLoading.value = true
+  try {
+    const res = await fetch(`${BASE_URL}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username.trim(), password })
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      showToast({ message: data.error || '登录失败', icon: 'fail' })
+      return
+    }
+    // 记住用户名
+    if (rememberMe.value) {
+      localStorage.setItem('poker_remember_username', username.trim())
+    } else {
+      localStorage.removeItem('poker_remember_username')
+    }
+    // 存储 player（带 _token 供 socket 使用）
+    store.setPlayer({ ...data.user, _token: data.token }, data.token)
+    router.replace('/lobby')
+  } catch (e) {
+    showToast({ message: '网络错误，请重试', icon: 'fail' })
+  } finally {
+    loginLoading.value = false
+  }
+}
+
+async function handleRegister() {
+  const { username, password, confirmPassword, nickname, avatar } = regForm
+  if (!username.trim()) { showToast('请输入用户名'); return }
+  if (!/^[a-zA-Z0-9_]{3,20}$/.test(username.trim())) {
+    showToast('用户名需为3-20位字母、数字或下划线')
     return
   }
-  loading.value = true
+  if (!password || password.length < 6) { showToast('密码至少6位'); return }
+  if (password !== confirmPassword) { showToast('两次密码不一致'); return }
+  if (!nickname.trim()) { showToast('请输入昵称'); return }
 
-  const playerData = {
-    id: 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    nickname: nickname.value.trim(),
-    avatar: selectedAvatar.value,
-    chips: 1000,   // 占位，实际由房主开局时设置
-    createdAt: Date.now()
+  regLoading.value = true
+  try {
+    const res = await fetch(`${BASE_URL}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: username.trim(),
+        password,
+        nickname: nickname.trim(),
+        avatar
+      })
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      showToast({ message: data.error || '注册失败', icon: 'fail' })
+      return
+    }
+    showToast({ message: '注册成功！', icon: 'success' })
+    store.setPlayer({ ...data.user, _token: data.token }, data.token)
+    router.replace('/lobby')
+  } catch (e) {
+    showToast({ message: '网络错误，请重试', icon: 'fail' })
+  } finally {
+    regLoading.value = false
   }
-
-  setTimeout(() => {
-    store.setPlayer(playerData)
-    loading.value = false
-    router.push('/lobby')
-  }, 600)
 }
 </script>
 
@@ -161,7 +322,7 @@ function handleLogin() {
 
 .logo-area {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
 }
 
 .logo-icon {
@@ -192,32 +353,75 @@ function handleLogin() {
 }
 
 .login-form {
-  padding: 24px 20px 28px;
+  padding: 0 0 20px;
+  overflow: hidden;
 }
 
-.form-title {
-  color: #fff;
-  font-size: 18px;
-  font-weight: 700;
-  margin: 0 0 16px;
-  text-align: center;
+/* Tabs 样式覆盖 */
+.auth-tabs :deep(.van-tabs__wrap) {
+  border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 
-.nick-input {
+.auth-tabs :deep(.van-tab) {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.auth-tabs :deep(.van-tabs__line) {
+  background: #f5c842;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.tab-content {
+  padding: 20px 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-input {
   background: rgba(255,255,255,0.08) !important;
   border-radius: 12px !important;
-  margin-bottom: 20px;
   --van-field-input-text-color: #fff;
   --van-field-placeholder-text-color: rgba(255,255,255,0.35);
-  border: 1px solid rgba(255,255,255,0.15) !important;
+  --van-field-icon-size: 18px;
+  border: 1px solid rgba(255,255,255,0.12) !important;
 }
 
 :deep(.van-field__control) {
   color: #fff !important;
-  font-size: 16px;
+  font-size: 15px;
 }
 
-.avatar-section { margin-bottom: 24px; }
+:deep(.van-field__left-icon .van-icon) {
+  color: rgba(255,255,255,0.45) !important;
+}
+
+:deep(.van-field__right-icon .van-icon) {
+  color: rgba(255,255,255,0.45) !important;
+}
+
+.remember-row {
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+}
+
+.remember-text {
+  color: rgba(255,255,255,0.55);
+  font-size: 13px;
+}
+
+.auth-btn {
+  height: 50px !important;
+  font-size: 16px !important;
+  letter-spacing: 1px;
+  margin-top: 4px;
+}
+
+/* 头像选择 */
+.avatar-section { }
 
 .avatar-label {
   color: rgba(255,255,255,0.6);
@@ -236,7 +440,7 @@ function handleLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 22px;
   border-radius: 10px;
   cursor: pointer;
   background: rgba(255,255,255,0.06);
@@ -250,9 +454,12 @@ function handleLogin() {
   transform: scale(1.1);
 }
 
-.login-btn {
-  height: 52px !important;
-  font-size: 17px !important;
-  letter-spacing: 1px;
+/* 滑入动画 */
+.slide-up-enter-active {
+  transition: all 0.4s ease;
+}
+.slide-up-enter-from {
+  opacity: 0;
+  transform: translateY(30px);
 }
 </style>

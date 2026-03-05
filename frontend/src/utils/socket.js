@@ -118,7 +118,9 @@ export function getSocket() {
 
       if (currentPlayer && !authSent) {
         authSent = true
-        socket.emit('player:auth', { playerId: currentPlayer.id, player: currentPlayer })
+        // 使用 JWT token 认证
+        const token = currentPlayer._token || currentPlayer.id
+        socket.emit('player:auth', { token })
         console.log(`[Socket] 重连后自动认证: ${currentPlayer.nickname}`)
       }
     })
@@ -154,7 +156,7 @@ export function getSocket() {
 /**
  * 连接并认证
  * 每次调用都会确保 auth 发出，保证 socketToPlayer 映射正确
- * @param {object} player
+ * @param {object} player - 玩家对象（需含 _token 字段存放 JWT）
  * @returns {socket}
  */
 export function connectSocket(player) {
@@ -163,7 +165,9 @@ export function connectSocket(player) {
 
   const doAuth = () => {
     authSent = true
-    s.emit('player:auth', { playerId: player.id, player })
+    // 优先使用 _token（JWT），兼容旧格式
+    const token = player._token || player.id
+    s.emit('player:auth', { token })
   }
 
   if (s.connected) {

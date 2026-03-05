@@ -40,7 +40,7 @@ export function useGameSocket({
       return
     }
 
-    const socket = connectSocket(store.player)
+    const socket = connectSocket(store.player ? { ...store.player, _token: store.token } : store.player)
 
     // 游戏状态更新
     socket.on('game:state', (state) => {
