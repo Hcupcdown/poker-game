@@ -73,6 +73,12 @@ export function useDealAnimation({ gameState, opponents, store, communityAreaRef
     const deckCx = deckRect.left + deckRect.width / 2
     const deckCy = deckRect.top + deckRect.height / 2
 
+    // 飞行牌容器（.flying-cards-layer / .game-page）的偏移，用于将 viewport 坐标转为容器内坐标
+    const containerEl = document.querySelector('.flying-cards-layer') || document.querySelector('.game-page')
+    const containerRect = containerEl ? containerEl.getBoundingClientRect() : { left: 0, top: 0 }
+    const ox = containerRect.left
+    const oy = containerRect.top
+
     const gs = gameState.value
     const players = gs.players || []
     const myId = store.player?.id
@@ -105,8 +111,8 @@ export function useDealAnimation({ gameState, opponents, store, communityAreaRef
 
     function getDeckOrigin() {
       return {
-        startX: deckCx - cardW / 2,
-        startY: deckCy - cardH / 2
+        startX: deckCx - cardW / 2 - ox,
+        startY: deckCy - cardH / 2 - oy
       }
     }
 
@@ -115,8 +121,8 @@ export function useDealAnimation({ gameState, opponents, store, communityAreaRef
         const container = myAreaRef?.value?.cardsContainer
         if (!container) return null
         const r = container.getBoundingClientRect()
-        const centerX = r.left + r.width / 2
-        const centerY = r.top + r.height / 2
+        const centerX = r.left + r.width / 2 - ox
+        const centerY = r.top + r.height / 2 - oy
         const offset = cardIndex === 0 ? -37 : 37
         return { x: centerX + offset, y: centerY }
       } else {
@@ -126,7 +132,7 @@ export function useDealAnimation({ gameState, opponents, store, communityAreaRef
         const avatarEl = slots[oppIdx].querySelector('.opp-avatar-wrap')
         const target = avatarEl || slots[oppIdx]
         const r = target.getBoundingClientRect()
-        return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+        return { x: r.left + r.width / 2 - ox, y: r.top + r.height / 2 - oy }
       }
     }
 
@@ -138,10 +144,10 @@ export function useDealAnimation({ gameState, opponents, store, communityAreaRef
         el = placeholders[cardIndex]
       }
       if (!el) {
-        return { x: deckCx, y: deckCy + 80 }
+        return { x: deckCx - ox, y: deckCy + 80 - oy }
       }
       const r = el.getBoundingClientRect()
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+      return { x: r.left + r.width / 2 - ox, y: r.top + r.height / 2 - oy }
     }
 
     // 生成飞行牌（手牌部分）

@@ -84,8 +84,8 @@
       </div>
     </transition>
 
-    <!-- 飞行牌层 -->
-    <teleport to="body">
+    <!-- 飞行牌层（fixed 定位在游戏页内，不用 teleport 避免层级过高覆盖弹窗） -->
+    <div class="flying-cards-layer">
       <div
         v-for="fc in flyingCards"
         :key="fc.id"
@@ -95,7 +95,7 @@
       >
         <div class="flying-card-back"></div>
       </div>
-    </teleport>
+    </div>
 
     <!-- ===== 我的区域 + 操作日志 ===== -->
     <div class="my-area-wrapper">
@@ -692,11 +692,18 @@ onUnmounted(() => {
 }
 
 /* ===== 飞行牌 ===== */
+.flying-cards-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;   /* 高于牌桌元素，低于 van-popup（2000+）和结算弹窗 */
+  overflow: hidden;
+}
+
 .flying-card {
-  position: fixed;
+  position: absolute;
   width: 60px;
   height: 84px;
-  z-index: 9999;
   pointer-events: none;
   will-change: transform, opacity;
 }
