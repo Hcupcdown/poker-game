@@ -7,10 +7,11 @@
     </div>
 
     <!-- 我的手牌区域（含左侧余额） -->
+    <div class="hand-strength-row">
+      <div v-if="handStrength" class="hand-strength-label">{{ handStrength }}</div>
+    </div>
     <div class="my-cards-row">
       <div class="my-chips-left">
-        <!-- 手牌强度标签：显示在余额上方 -->
-        <div v-if="handStrength" class="hand-strength-label">{{ handStrength }}</div>
         <span class="chips-icon">💰</span>
         <span class="chips-val">{{ chips.toLocaleString() }}</span>
       </div>
@@ -114,6 +115,15 @@ defineExpose({ myAreaRef, cardsContainer })
   flex-shrink: 0;
 }
 
+/* 手牌强度标签独立一行，居中显示在手牌上方 */
+.hand-strength-row {
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
 .my-cards-row {
   position: relative;
   display: flex;
@@ -130,10 +140,6 @@ defineExpose({ myAreaRef, cardsContainer })
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: rgba(0,0,0,0.45);
-  border-radius: 10px;
-  padding: 6px 10px;
-  min-width: 54px;
   z-index: 1;
 }
 
@@ -287,7 +293,7 @@ defineExpose({ myAreaRef, cardsContainer })
   align-items: center;
   justify-content: center;
   gap: 5px;
-  margin-bottom: 6px;
+  margin-bottom: 14px;
   animation: betAboveFadeIn 0.3s ease both;
 }
 
@@ -340,16 +346,19 @@ defineExpose({ myAreaRef, cardsContainer })
 }
 
 .hand-strength-label {
-  display: block;
+  display: inline-block;
   text-align: center;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 800;
   color: #f5c842;
-  margin-bottom: 3px;
-  text-shadow: 0 1px 6px rgba(245,200,66,0.5);
-  letter-spacing: 0.5px;
+  text-shadow: 0 1px 8px rgba(245,200,66,0.6);
+  letter-spacing: 1px;
   animation: fadeInDown 0.3s ease;
   white-space: nowrap;
+  background: rgba(245,200,66,0.1);
+  padding: 2px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(245,200,66,0.3);
 }
 
 @keyframes fadeInDown {
