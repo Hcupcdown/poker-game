@@ -638,35 +638,108 @@ class GameRoom {
   // 结算
   // ============================
 
+  /**
+   * 计算边池列表
+   *
+   * 算法：
+   *   按每人 totalBet 从小到大排序，依次「切」出一个层次的底池。
+   *   每一层 cap = 当前最小 totalBet（已 all-in 的玩家限额）。
+   *   该层底池 = cap × 参与者数量（所有 totalBet >= cap 且未弃牌的玩家）。
+   *   层内赢家：参与者中牌型最好的；弃牌者无资格参与该层。
+   *
+   * @param {Array} players       gameState.players
+   * @param {boolean} showdown    是否需要摊牌比较
+   * @param {object} evalResult   HandEvaluator.findWinners 的结果（showdown=true 时）
+   * @returns {Array<{ pot, eligibleIds, winners, amount }>}
+   */
+  _computeSidePots(players, showdown, evalResult) {
+    // 只考虑 totalBet > 0 的玩家（下过注的）
+    // 弃牌者也计入了 totalBet，但不能赢边池
+    const contributors = players.filter(p => p.totalBet > 0)
+
+    // 按 totalBet 从小到大排序
+    const sorted = [...contributors].sort((a, b) => a.totalBet - b.totalBet)
+
+    const pots = []       // { amount, eligibleIds }
+    const remaining = {}  // playerId → 剩余可参与金额
+    contributors.forEach(p => { remaining[p.id] = p.totalBet })
+
+    let processedCap = 0
+
+    for (const pivot of sorted) {
+      const cap = pivot.totalBet
+      if (cap <= processedCap) continue  // 已处理过此层
+
+      const layerCap = cap - processedCap  // 本层每人最多贡献
+      let potAmount = 0
+
+      // 所有 totalBet >= cap 的玩家都贡献了本层（含已处理的 cap 以上部分）
+      for (const p of contributors) {
+        if (p.totalBet >= cap) {
+          potAmount += layerCap
+        } else if (p.totalBet > processedCap) {
+          // totalBet 介于 processedCap 和 cap 之间（不太可能，但防御）
+          potAmount += p.totalBet - processedCap
+        }
+      }
+
+      // 有资格赢取此层底池的玩家：totalBet >= cap 且未弃牌
+      const eligibleIds = contributors
+        .filter(p => p.totalBet >= cap && p.status !== 'folded')
+        .map(p => p.id)
+
+      if (potAmount > 0 && eligibleIds.length > 0) {
+        pots.push({ amount: potAmount, eligibleIds })
+      }
+
+      processedCap = cap
+    }
+
+    // 为每个边池找出赢家
+    return pots.map(pot => {
+      let potWinners
+      if (!showdown || pot.eligibleIds.length === 1) {
+        potWinners = [pot.eligibleIds[0]]
+      } else {
+        // 从 evalResult 里筛选出有资格的玩家，再找最大牌型
+        if (evalResult) {
+          const eligible = evalResult.results.filter(r => pot.eligibleIds.includes(r.id))
+          // 找出最高 rank
+          const maxRank = Math.max(...eligible.map(r => r.rank))
+          potWinners = eligible.filter(r => r.rank === maxRank).map(r => r.id)
+        } else {
+          potWinners = [pot.eligibleIds[0]]
+        }
+      }
+      return { ...pot, winners: potWinners }
+    })
+  }
+
   _settleGame(showdown) {
     const gs = this.gameState
     this.clearActionTimer()
 
     const notFolded = gs.players.filter(p => p.status !== 'folded')
 
-    let winners = []
-    let results = []
+    // ---- 步骤1：评估牌型（showdown 且多人）----
+    let evalResult = null
+    let handResults = []   // { id, handName, isWinner }
 
     if (!showdown || notFolded.length === 1) {
-      winners = [notFolded[0].id]
-      results = gs.players.map(p => ({
+      // 只剩一人，直接胜出
+      handResults = gs.players.map(p => ({
         id: p.id,
         nickname: p.nickname,
         avatar: p.avatar,
         cards: p.cards,
         handName: p.id === notFolded[0].id ? '其他人弃牌' : '已弃牌',
-        isWinner: p.id === notFolded[0].id
+        isWinner: false  // 稍后由边池分配决定
       }))
     } else {
-      const evalInput = notFolded.map(p => ({
-        id: p.id,
-        holeCards: p.cards
-      }))
-
+      const evalInput = notFolded.map(p => ({ id: p.id, holeCards: p.cards }))
       try {
-        const evalResult = HandEvaluator.findWinners(evalInput, gs.communityCards)
-        winners = evalResult.winners
-        results = gs.players.map(p => {
+        evalResult = HandEvaluator.findWinners(evalInput, gs.communityCards)
+        handResults = gs.players.map(p => {
           const r = evalResult.results.find(e => e.id === p.id)
           return {
             id: p.id,
@@ -674,68 +747,91 @@ class GameRoom {
             avatar: p.avatar,
             cards: p.cards,
             handName: r ? r.nameZh : '已弃牌',
-            isWinner: winners.includes(p.id)
+            isWinner: false  // 稍后由边池分配决定
           }
         })
       } catch (e) {
         console.error(`[Game] 牌型评估失败: ${e.message}`)
-        winners = [notFolded[0].id]
-        results = gs.players.map(p => ({
+        // fallback：第一个未弃牌玩家获胜
+        handResults = gs.players.map(p => ({
           id: p.id,
           nickname: p.nickname,
           avatar: p.avatar,
           cards: p.cards,
           handName: '未知',
-          isWinner: p.id === notFolded[0].id
+          isWinner: false
         }))
       }
     }
 
-    // 分配底池（处理余数：多余的筹码给第一个赢家）
-    const totalPot = gs.pot
-    const baseGain = Math.floor(totalPot / winners.length)
-    const remainder = totalPot % winners.length
+    // ---- 步骤2：计算边池并分配筹码 ----
+    const sidePots = this._computeSidePots(gs.players, showdown, evalResult)
+    console.log(`[Game] 边池计算: ${JSON.stringify(sidePots.map(p => ({ amount: p.amount, winners: p.winners })))}`)
 
-    winners.forEach((wid, idx) => {
-      const gain = baseGain + (idx === 0 ? remainder : 0)
-      const p = gs.players.find(pl => pl.id === wid)
-      if (p) {
-        p.chips += gain
-        const roomPlayer = this.players.find(rp => rp.id === wid)
-        if (roomPlayer) roomPlayer.chips = p.chips
-      }
-    })
+    // 检查边池总额和 gs.pot 是否一致（防御性校验）
+    const sidePotTotal = sidePots.reduce((s, p) => s + p.amount, 0)
+    if (sidePotTotal !== gs.pot) {
+      console.warn(`[Game] 边池总额 ${sidePotTotal} 与 gs.pot ${gs.pot} 不符，可能有浮点误差`)
+    }
 
-    // 同步所有玩家筹码到房间
+    // 记录每个玩家从边池获得的总金额，用于结算展示
+    const chipsGained = {}  // playerId → 获得筹码
+    gs.players.forEach(p => { chipsGained[p.id] = 0 })
+
+    const allWinnerIds = new Set()
+
+    for (const pot of sidePots) {
+      const winCount = pot.winners.length
+      const baseShare = Math.floor(pot.amount / winCount)
+      const rem = pot.amount % winCount
+
+      pot.winners.forEach((wid, idx) => {
+        const share = baseShare + (idx === 0 ? rem : 0)
+        chipsGained[wid] = (chipsGained[wid] || 0) + share
+        const p = gs.players.find(pl => pl.id === wid)
+        if (p) p.chips += share
+        allWinnerIds.add(wid)
+      })
+    }
+
+    // 同步筹码到房间玩家
     gs.players.forEach(gp => {
       const rp = this.players.find(rp => rp.id === gp.id)
       if (rp) rp.chips = gp.chips
     })
 
-    // 构建结算结果
-    const winner = gs.players.find(p => winners.includes(p.id))
-    const winnerResult = results.find(r => r.isWinner)
-    const winnerGain = baseGain + (winners.length > 0 ? remainder : 0)
+    // 更新 isWinner 标记
+    handResults.forEach(r => { r.isWinner = allWinnerIds.has(r.id) })
+
+    // ---- 步骤3：构建结算结果 ----
+    const totalPot = gs.pot
+    // 用于前端展示的"主赢家"：获得筹码最多的那个
+    const topWinnerId = [...allWinnerIds].sort((a, b) => (chipsGained[b] || 0) - (chipsGained[a] || 0))[0]
+    const topWinner = gs.players.find(p => p.id === topWinnerId)
+    const topWinnerHand = handResults.find(r => r.id === topWinnerId)
 
     const roundResult = {
-      winner: winner ? {
-        id: winner.id,
-        nickname: winner.nickname,
-        avatar: winner.avatar,
-        handName: winnerResult ? winnerResult.handName : '',
-        gain: winnerGain
+      winner: topWinner ? {
+        id: topWinner.id,
+        nickname: topWinner.nickname,
+        avatar: topWinner.avatar,
+        handName: topWinnerHand ? topWinnerHand.handName : '',
+        gain: chipsGained[topWinnerId] || 0
       } : null,
-      winners,
-      allHands: results.map(r => {
+      winners: [...allWinnerIds],
+      sidePots: sidePots.map(p => ({
+        amount: p.amount,
+        winners: p.winners,
+        eligibleCount: p.eligibleIds.length
+      })),
+      allHands: handResults.map(r => {
         const gp = gs.players.find(p => p.id === r.id)
         const rp = this.players.find(p => p.id === r.id)
         const chipsAfter = rp ? rp.chips : 0
         const invested = gp ? gp.totalBet || 0 : 0
-        const isWin = r.isWinner
-        const winnerIdx = winners.indexOf(r.id)
-        const myGain = isWin ? (baseGain + (winnerIdx === 0 ? remainder : 0)) : 0
+        const myGain = chipsGained[r.id] || 0
         const chipsChange = myGain - invested
-        return { ...r, chipsChange, chipsAfter }
+        return { ...r, chipsChange, chipsAfter, gain: myGain }
       }),
       pot: totalPot,
       communityCards: gs.communityCards
@@ -743,6 +839,7 @@ class GameRoom {
 
     gs.phase = 'showdown'
     gs.currentPlayerId = null
+    gs.sidePots = sidePots.map(p => ({ amount: p.amount, winners: p.winners }))
 
     // 检查是否有人筹码耗尽
     const bustedPlayers = this.players.filter(p => p.chips <= 0)
@@ -760,7 +857,7 @@ class GameRoom {
     // 标记本轮结束，等待确认
     this.status = 'round_end'
 
-    console.log(`[Game] 房间 ${this.id} 本局结算，赢家: ${winners.join(',')}，底池: ${totalPot}${roundResult.gameOver ? '，有人破产' : ''}`)
+    console.log(`[Game] 房间 ${this.id} 本局结算，赢家: ${[...allWinnerIds].join(',')}，底池: ${totalPot}，边池数: ${sidePots.length}${roundResult.gameOver ? '，有人破产' : ''}`)
   }
 
   // ============================

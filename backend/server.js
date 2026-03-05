@@ -246,7 +246,7 @@ io.on('connection', (socket) => {
         if (currentRoom.status === 'round_end' && currentRoom.lastRoundResult) {
           setTimeout(() => {
             socket.emit('game:result', currentRoom.lastRoundResult)
-            const total = currentRoom.players.length
+            const total = currentRoom.players.filter(p => p.isBot || p.connected !== false).length
             const ready = currentRoom.nextRoundReady ? currentRoom.nextRoundReady.size : 0
             socket.emit('game:next_round_ready', {
               ready,
@@ -359,7 +359,7 @@ io.on('connection', (socket) => {
         if (room.status === 'round_end' && room.lastRoundResult) {
           setTimeout(() => {
             socket.emit('game:result', room.lastRoundResult)
-            const total = room.players.length
+            const total = room.players.filter(p => p.isBot || p.connected !== false).length
             const ready = room.nextRoundReady ? room.nextRoundReady.size : 0
             socket.emit('game:next_round_ready', {
               ready,
@@ -648,8 +648,16 @@ io.on('connection', (socket) => {
       }
     }
 
-    // total 统计所有玩家（包含掉线玩家），掉线玩家也需要确认
-    const total = room.players.length
+    // 掉线玩家自动视为已确认（不卡其他人）
+    for (const p of room.players) {
+      if (!p.isBot && p.connected === false) {
+        room.nextRoundReady.add(p.id)
+      }
+    }
+
+    // total 只统计在线的真人玩家 + 机器人（掉线玩家已自动确认，不计入等待总数）
+    const onlinePlayers = room.players.filter(p => p.isBot || p.connected !== false)
+    const total = onlinePlayers.length
     const ready = room.nextRoundReady.size
 
     // 广播等待进度
@@ -831,12 +839,18 @@ function handleDisconnect(socket, playerId) {
             }
           })
         }
-        // round_end 状态下断线：广播断线通知，但不改变确认人数要求
-        // 掉线玩家仍然算在 total 中，需要重连后确认
+        // round_end 状态下断线：掉线玩家自动视为已确认，广播更新后的进度
         if (room.status === 'round_end') {
-          const total = room.players.length
-          const ready = room.nextRoundReady ? room.nextRoundReady.size : 0
-          io.to(code).emit('game:next_round_ready', { ready, total, readyIds: room.nextRoundReady ? [...room.nextRoundReady] : [] })
+          // 掉线玩家自动加入已确认集合
+          if (!room.nextRoundReady) room.nextRoundReady = new Set()
+          room.nextRoundReady.add(playerId)
+          // 机器人也自动确认
+          for (const bp of room.players) {
+            if (bp.isBot) room.nextRoundReady.add(bp.id)
+          }
+          const total = room.players.filter(pl => pl.isBot || pl.connected !== false).length
+          const ready = room.nextRoundReady.size
+          io.to(code).emit('game:next_round_ready', { ready, total, readyIds: [...room.nextRoundReady] })
         }
       } else {
         // 等待室：60s 重连机会（延长以给玩家更多重连时间）
