@@ -44,8 +44,7 @@ export function useGameSocket({
 
     // 游戏状态更新
     socket.on('game:state', (state) => {
-      const wasWaiting = gameState.value.phase === 'waiting'
-      gameState.value = state
+      const wasWaiting = (store.gameState?.phase || 'waiting') === 'waiting'
       store.setGameState(state)
       if (wasWaiting && state.phase !== 'waiting') {
         triggerDealAnimation()
@@ -58,7 +57,6 @@ export function useGameSocket({
       showFinalResult.value = false
       nextRoundSent.value = false
       displayBets.value = {}
-      gameState.value = gs
       store.setGameState(gs)
       communitySlots.value = []
       triggerDealAnimation()
@@ -94,15 +92,6 @@ export function useGameSocket({
       finalReason.value = reason || ''
       showFinalResult.value = true
       store.setGameState(null)
-      gameState.value = {
-        phase: 'waiting',
-        communityCards: [],
-        pot: 0,
-        bigBlind: 20,
-        currentPlayerId: null,
-        players: [],
-        lastAction: null
-      }
     })
 
     // 房间信息更新
@@ -128,7 +117,6 @@ export function useGameSocket({
       nextRoundReady.value = 0
       nextRoundTotal.value = 0
       displayBets.value = {}
-      gameState.value = gs
       store.setGameState(gs)
       communitySlots.value = []
       triggerDealAnimation()

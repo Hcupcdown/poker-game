@@ -225,8 +225,8 @@ const CONNECTION_STATUS_TEXT = {
   reconnecting: '重连中...'
 }
 
-// ====== 游戏状态 ======
-const gameState = ref({
+// ====== 游戏状态（#17：单一数据源，从 store 读取）======
+const EMPTY_GAME_STATE = {
   phase: 'waiting',
   communityCards: [],
   pot: 0,
@@ -234,7 +234,9 @@ const gameState = ref({
   currentPlayerId: null,
   players: [],
   lastAction: null
-})
+}
+
+const gameState = computed(() => store.gameState || EMPTY_GAME_STATE)
 
 // ====== 房主权限 ======
 const roomOwnerId = ref(store.room?.ownerId || '')
