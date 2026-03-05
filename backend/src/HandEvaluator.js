@@ -50,6 +50,24 @@ class HandEvaluator {
   }
 
   /**
+   * 从已评估结果中，针对指定 id 子集找出真正的赢家（走 pokersolver Hand.winners 完整比较）
+   * @param {string[]} eligibleIds  有资格参与此边池的玩家 id
+   * @param {object} evalResult     findWinners 的返回值（含 results 和原始 hand 对象）
+   * @returns {string[]} 赢家 id 数组（可能多个，平局时）
+   */
+  static findWinnersAmong(eligibleIds, evalResult) {
+    if (!evalResult || !evalResult.handsById) return [eligibleIds[0]]
+    const eligibleHands = eligibleIds
+      .map(id => evalResult.handsById[id])
+      .filter(Boolean)
+    if (eligibleHands.length === 0) return [eligibleIds[0]]
+    const winningHands = Hand.winners(eligibleHands)
+    // 从 handsById 反查 id
+    const winningIds = eligibleIds.filter(id => winningHands.includes(evalResult.handsById[id]))
+    return winningIds.length > 0 ? winningIds : [eligibleIds[0]]
+  }
+
+  /**
    * 比较多个玩家，找出获胜者
    * @param {Array<{ id, holeCards, communityCards }>} playerHands
    * @returns {{ winners: string[], results: Array<{ id, rank, nameZh, cards }> }}
@@ -60,22 +78,24 @@ class HandEvaluator {
         const result = HandEvaluator.evaluate(holeCards, communityCards)
         return { id, ...result }
       } catch (e) {
-        // 评估失败（如公共牌不足），给最低分
         return { id, hand: null, rank: 0, name: 'High Card', nameZh: '高牌', cards: [] }
       }
     })
 
-    // 使用 pokersolver 的 Hand.winners() 找出赢家
     const hands = evaluated.filter(e => e.hand).map(e => e.hand)
     const winningHands = Hand.winners(hands)
 
-    // 找到赢家对应的玩家 id
     const winners = evaluated
       .filter(e => e.hand && winningHands.includes(e.hand))
       .map(e => e.id)
 
+    // 保存 id → hand 对象的映射，供 findWinnersAmong 精确比较边池
+    const handsById = {}
+    evaluated.forEach(e => { if (e.hand) handsById[e.id] = e.hand })
+
     return {
       winners,
+      handsById,
       results: evaluated.map(e => ({
         id: e.id,
         rank: e.rank,

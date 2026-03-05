@@ -723,12 +723,9 @@ class GameRoom {
       if (!showdown || pot.eligibleIds.length === 1) {
         potWinners = [pot.eligibleIds[0]]
       } else {
-        // 从 evalResult 里筛选出有资格的玩家，再找最大牌型
+        // 用 pokersolver Hand.winners() 在有资格的玩家中精确比较（正确处理同牌型平局）
         if (evalResult) {
-          const eligible = evalResult.results.filter(r => pot.eligibleIds.includes(r.id))
-          // 找出最高 rank
-          const maxRank = Math.max(...eligible.map(r => r.rank))
-          potWinners = eligible.filter(r => r.rank === maxRank).map(r => r.id)
+          potWinners = HandEvaluator.findWinnersAmong(pot.eligibleIds, evalResult)
         } else {
           potWinners = [pot.eligibleIds[0]]
         }
