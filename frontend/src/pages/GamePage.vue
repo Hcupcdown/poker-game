@@ -732,10 +732,7 @@ onUnmounted(() => {
 }
 
 .flying-card-back::after {
-  content: '🂠';
-  font-size: 36px;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
-  z-index: 1;
+  content: '';
 }
 
 .chip-icon {
