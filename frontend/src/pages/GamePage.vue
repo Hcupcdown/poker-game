@@ -111,6 +111,7 @@
         :is-dealer="me?.isDealer"
         :is-small-blind="me?.isSmallBlind"
         :is-big-blind="me?.isBigBlind"
+        :connected="me?.connected !== false"
         @toggle-reveal="toggleCardReveal"
       />
       <div class="action-log">
@@ -133,6 +134,7 @@
       :my-chips="myChips"
       :min-raise="minRaise"
       :max-raise="maxRaise"
+      :pot="gameState.pot"
       @action="doAction"
       @open-chip-picker="handleOpenChipPicker"
     />
@@ -290,7 +292,7 @@ const actionPanelRef = ref(null)
 
 // ====== Composables ======
 // 倒计时
-const { timeLeft, timerProgress, startTimer, stopTimer } = useTimer(isMyTurn, () => doAction('fold'))
+const { timeLeft, timerProgress, startTimer, stopTimer } = useTimer(isMyTurn, () => doAction('fold'), gameState)
 
 // 发牌动画
 const {

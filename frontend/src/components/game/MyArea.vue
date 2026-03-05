@@ -57,7 +57,7 @@
           <span v-if="isBigBlind" class="role-badge bb-badge">BB</span>
         </div>
         <div class="my-text">
-          <span class="my-name">{{ nickname }}</span>
+          <span class="my-name">{{ nickname }}<span v-if="connected === false" class="my-disconnected-badge">📶断线</span></span>
         </div>
       </div>
       <div v-if="isMyTurn" class="my-timer">
@@ -86,7 +86,8 @@ defineProps({
   nickname: { type: String, default: '' },
   isDealer: { type: Boolean, default: false },
   isSmallBlind: { type: Boolean, default: false },
-  isBigBlind: { type: Boolean, default: false }
+  isBigBlind: { type: Boolean, default: false },
+  connected: { type: Boolean, default: true }
 })
 
 defineEmits(['toggleReveal'])
@@ -320,6 +321,13 @@ defineExpose({ myAreaRef, cardsContainer })
   color: #fff;
   font-size: 14px;
   font-weight: 700;
+}
+
+.my-disconnected-badge {
+  font-size: 11px;
+  color: #95a5a6;
+  margin-left: 4px;
+  font-weight: 400;
 }
 
 .role-badge {

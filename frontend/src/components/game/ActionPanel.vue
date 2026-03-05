@@ -50,6 +50,17 @@
         <span class="chip-picker-title">选择筹码</span>
         <span class="chip-picker-total gold">加注到: {{ chipTotal }}</span>
       </div>
+      <!-- 快捷加注按钮 -->
+      <div class="quick-bet-row">
+        <button
+          v-for="btn in quickBetButtons"
+          :key="btn.label"
+          class="quick-bet-btn"
+          :class="btn.cls"
+          :disabled="btn.amount < props.minRaise"
+          @click="applyQuickBet(btn.amount)"
+        >{{ btn.label }}</button>
+      </div>
       <div class="chip-grid">
         <div v-for="chip in chipDenominations" :key="chip.value" class="chip-col">
           <div class="chip-token">
@@ -99,10 +110,42 @@ const props = defineProps({
   callAmount: { type: Number, default: 0 },
   myChips: { type: Number, default: 0 },
   minRaise: { type: Number, default: 0 },
-  maxRaise: { type: Number, default: 0 }
+  maxRaise: { type: Number, default: 0 },
+  pot: { type: Number, default: 0 }
 })
 
 const emit = defineEmits(['action', 'openChipPicker'])
+
+// 快捷加注按钮
+const quickBetButtons = computed(() => {
+  const pot = props.pot || 0
+  const max = props.maxRaise
+  const clamp = (v) => Math.min(Math.max(Math.floor(v), 0), max)
+  return [
+    { label: '½池', amount: clamp(pot / 2), cls: 'qb-half' },
+    { label: '全池', amount: clamp(pot), cls: 'qb-full' },
+    { label: '2倍池', amount: clamp(pot * 2), cls: 'qb-double' },
+    { label: 'All In', amount: max, cls: 'qb-allin' }
+  ]
+})
+
+function applyQuickBet(amount) {
+  if (amount < props.minRaise || amount > props.maxRaise) return
+  // 将筹码分配到各面值
+  let remaining = amount
+  const newCounts = { 10: 0, 20: 0, 50: 0, 100: 0 }
+  for (const val of [100, 50, 20, 10]) {
+    const count = Math.floor(remaining / val)
+    newCounts[val] = count
+    remaining -= count * val
+  }
+  // 如有余数，向上取整到最小面值
+  if (remaining > 0 && amount <= props.maxRaise) {
+    newCounts[10] += Math.ceil(remaining / 10)
+  }
+  chipCounts.value = newCounts
+  pickerKey.value++
+}
 
 // 筹码选择器
 const chipPickerVisible = ref(false)
@@ -292,4 +335,31 @@ defineExpose({ openPicker })
 }
 
 .chip-hint.warn { color: #e74c3c; }
+
+/* 快捷加注按钮 */
+.quick-bet-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.quick-bet-btn {
+  flex: 1;
+  height: 34px;
+  border-radius: 10px;
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+  color: #fff;
+}
+
+.quick-bet-btn:active { transform: scale(0.95); }
+.quick-bet-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.qb-half   { background: linear-gradient(135deg, #3498db, #2980b9); }
+.qb-full   { background: linear-gradient(135deg, #27ae60, #1e8449); }
+.qb-double { background: linear-gradient(135deg, #f39c12, #d68910); }
+.qb-allin  { background: linear-gradient(135deg, #e74c3c, #c0392b); }
 </style>

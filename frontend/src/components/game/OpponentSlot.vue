@@ -3,7 +3,8 @@
     class="opponent-slot"
     :class="[
       { 'is-turn': player.id === currentPlayerId },
-      { 'is-folded': player.status === 'folded' }
+      { 'is-folded': player.status === 'folded' },
+      { 'is-disconnected': player.connected === false }
     ]"
   >
     <!-- 当前行动指示器（倒计时光圈） -->
@@ -26,7 +27,7 @@
     </svg>
 
     <!-- 玩家头像 -->
-    <div class="opp-avatar-wrap">
+    <div class="opp-avatar-wrap" :class="{ 'avatar-disconnected': player.connected === false }">
       <span class="opp-avatar">{{ player.avatar }}</span>
       <span
         class="opp-status-dot"
@@ -40,7 +41,7 @@
     <!-- 玩家信息 -->
     <div class="opp-info">
       <div class="opp-name">
-        <span v-if="player.isBot" class="bot-indicator">🤖</span>{{ player.nickname }}
+        <span v-if="player.isBot" class="bot-indicator">🤖</span>{{ player.nickname }}<span v-if="player.connected === false" class="disconnected-badge">📶断线</span>
       </div>
       <div class="opp-chips">{{ player.chips?.toLocaleString?.() ?? player.chips }}</div>
       <div v-if="displayBet > 0 && player.status !== 'folded'" class="opp-bet">
@@ -297,6 +298,22 @@ const timerGlowColor = computed(() => {
 .is-folded {
   opacity: 0.4;
   filter: grayscale(0.5);
+}
+
+.is-disconnected .opp-avatar-wrap.avatar-disconnected {
+  filter: grayscale(80%) opacity(0.5);
+}
+
+.is-disconnected .opp-info {
+  opacity: 0.6;
+}
+
+.disconnected-badge {
+  font-size: 9px;
+  color: #95a5a6;
+  margin-left: 3px;
+  font-weight: 400;
+  white-space: nowrap;
 }
 
 .is-turn {
