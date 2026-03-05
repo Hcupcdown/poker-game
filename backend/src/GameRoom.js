@@ -45,12 +45,13 @@ const DEAL_ANIMATION_MS = 3500
 const PHASES = ['preflop', 'flop', 'turn', 'river', 'showdown']
 
 class GameRoom {
-  constructor({ id, ownerId, smallBlind, bigBlind, maxPlayers, io }) {
+  constructor({ id, ownerId, smallBlind, bigBlind, maxPlayers, defaultChips, io }) {
     this.id = id
     this.ownerId = ownerId
     this.smallBlind = smallBlind || 10
     this.bigBlind = bigBlind || 20
     this.maxPlayers = maxPlayers || 6
+    this.defaultChips = defaultChips || 1000
     this.io = io
 
     /** @type {Array<PlayerInRoom>} */
@@ -444,10 +445,16 @@ class GameRoom {
   handlePlayerDisconnect(playerId) {
     if (!this.gameState) return
     const gs = this.gameState
+
+    // 无论是否轮到该玩家，都标记为断线（供前端显示）
+    const roomPlayer = this.players.find(p => p.id === playerId)
+    if (roomPlayer) roomPlayer.connected = false
+
     const player = gs.players.find(p => p.id === playerId)
     if (!player || player.status !== 'active') return
 
     if (gs.currentPlayerId === playerId) {
+      // 轮到断线玩家行动：立即超时弃牌
       this.clearActionTimer()
       this._doFold(player)
       gs.lastAction = { type: 'fold', name: player.nickname + '(断线)', amount: 0, playerId }
@@ -455,6 +462,9 @@ class GameRoom {
       this.io.to(this.id).emit('player:action:log', { msg: `${player.nickname} 断线超时自动弃牌` })
       this._broadcastGameState()
       this._checkRoundEnd()
+    } else {
+      // 非行动玩家断线：广播状态让前端更新断线标记
+      this._broadcastGameState()
     }
   }
 
@@ -564,11 +574,16 @@ class GameRoom {
 
     const nextPhase = PHASES[currentIdx + 1]
 
-    // 延迟 600ms 再切换到新阶段，让前端有时间展示上一轮的下注信息
+    // 先广播一次"当前下注展示"状态（phaseTransitioning=true），让前端能看到本轮所有下注
+    // 600ms 后再真正切换阶段并清零，避免切换时 currentBet 瞬间消失
+    gs.phaseTransitioning = true
+    this._broadcastGameState()
+
     setTimeout(() => {
+      gs.phaseTransitioning = false
       gs.phase = nextPhase
 
-      // 重置本轮下注和行动标记（所有玩家的 currentBet 都要清零，避免前端显示残留）
+      // 重置本轮下注和行动标记
       gs.players.forEach(p => {
         p.currentBet = 0
         if (p.status === 'active') {

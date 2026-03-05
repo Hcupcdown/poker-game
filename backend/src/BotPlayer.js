@@ -81,6 +81,16 @@ class BotPlayer {
    */
   resetRound() {
     this.roundActionCount = 0
+    // 对手记忆衰减：每局后保留 60% 的历史数据，避免旧数据影响判断
+    for (const pid of Object.keys(this.opponentMemory)) {
+      const mem = this.opponentMemory[pid]
+      mem.raises       = Math.floor(mem.raises       * 0.6)
+      mem.calls        = Math.floor(mem.calls        * 0.6)
+      mem.folds        = Math.floor(mem.folds        * 0.6)
+      mem.totalActions = Math.floor(mem.totalActions * 0.6)
+      // 样本太少时清除，避免噪音
+      if (mem.totalActions < 2) delete this.opponentMemory[pid]
+    }
   }
 
   // ============================

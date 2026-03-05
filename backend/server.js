@@ -293,9 +293,9 @@ io.on('connection', (socket) => {
     leaveCurrentRoom(socket, playerId)
 
     const roomCode = generateRoomCode()
-    const { smallBlind = 10, bigBlind = 20, maxPlayers = 6 } = data || {}
+    const { smallBlind = 10, bigBlind = 20, maxPlayers = 6, startChips = 1000 } = data || {}
 
-    const room = new GameRoom({ id: roomCode, ownerId: playerId, smallBlind, bigBlind, maxPlayers, io })
+    const room = new GameRoom({ id: roomCode, ownerId: playerId, smallBlind, bigBlind, maxPlayers, defaultChips: startChips, io })
     // 注册回调：阶段切换 / 超时弃牌 / 发牌动画结束 后触发机器人行动
     room.onPhaseAdvanced = (r) => triggerBotActionIfNeeded(r)
     room.onActionTimeout = (r) => triggerBotActionIfNeeded(r)
@@ -448,7 +448,7 @@ io.on('connection', (socket) => {
       id: botId,
       nickname: botNickname,
       avatar: botAvatar,
-      chips: 1000, // 初始筹码（startGame 时会重置）
+      chips: room.defaultChips, // 初始筹码与房间配置一致（startGame 时会统一重置）
       isBot: true,
       botLevel: level
     }
@@ -601,27 +601,8 @@ io.on('connection', (socket) => {
       return
     }
 
-    // 收集所有玩家最终筹码
-    const gs = room.gameState
-    const finalPlayers = room.players.map(p => {
-      const gp = gs ? gs.players.find(gpl => gpl.id === p.id) : null
-      return {
-        id: p.id,
-        nickname: p.nickname,
-        avatar: p.avatar,
-        chips: gp ? gp.chips : p.chips,
-        isBot: p.isBot || false
-      }
-    }).sort((a, b) => b.chips - a.chips)
-
-    // 清除所有机器人计时器
-    for (const p of room.players) {
-      if (p.isBot && botThinkingTimers.has(p.id)) {
-        clearTimeout(botThinkingTimers.get(p.id))
-        botThinkingTimers.delete(p.id)
-      }
-    }
-
+    const finalPlayers = buildFinalResult(room)
+    clearAllBotTimers(room)
     room.clearActionTimer()
     room.resetToWaiting()
 
@@ -681,14 +662,6 @@ io.on('connection', (socket) => {
       // 检查是否有人筹码耗尽 → 游戏结束
       const bustedPlayers = room.players.filter(p => p.chips <= 0)
       if (bustedPlayers.length > 0) {
-        const finalPlayers = room.players.map(p => ({
-          id: p.id,
-          nickname: p.nickname,
-          avatar: p.avatar,
-          chips: p.chips,
-          isBot: p.isBot || false
-        })).sort((a, b) => b.chips - a.chips)
-
         // 清除破产机器人
         for (const p of bustedPlayers) {
           if (p.isBot) {
@@ -700,6 +673,7 @@ io.on('connection', (socket) => {
           }
         }
 
+        const finalPlayers = buildFinalResult(room)
         room.resetToWaiting()
 
         io.to(room.id).emit('game:final_result', {
@@ -714,14 +688,7 @@ io.on('connection', (socket) => {
       // 检查是否只剩不足2人
       const alivePlayers = room.players.filter(p => p.chips > 0)
       if (alivePlayers.length < 2) {
-        const finalPlayers = room.players.map(p => ({
-          id: p.id,
-          nickname: p.nickname,
-          avatar: p.avatar,
-          chips: p.chips,
-          isBot: p.isBot || false
-        })).sort((a, b) => b.chips - a.chips)
-
+        const finalPlayers = buildFinalResult(room)
         room.resetToWaiting()
 
         io.to(room.id).emit('game:final_result', {
@@ -826,6 +793,38 @@ setInterval(() => {
 }, MEMORY_CLEANUP_INTERVAL)
 
 // ====== 工具函数 ======
+
+/**
+ * 构建游戏最终结果数组（房主结束 / 破产 / 人数不足时统一使用）
+ * @param {GameRoom} room
+ * @returns {Array}
+ */
+function buildFinalResult(room) {
+  const gs = room.gameState
+  return room.players.map(p => {
+    const gp = gs ? gs.players.find(gpl => gpl.id === p.id) : null
+    return {
+      id: p.id,
+      nickname: p.nickname,
+      avatar: p.avatar,
+      chips: gp ? gp.chips : p.chips,
+      isBot: p.isBot || false
+    }
+  }).sort((a, b) => b.chips - a.chips)
+}
+
+/**
+ * 清除房间内所有机器人的思考计时器
+ * @param {GameRoom} room
+ */
+function clearAllBotTimers(room) {
+  for (const p of room.players) {
+    if (p.isBot && botThinkingTimers.has(p.id)) {
+      clearTimeout(botThinkingTimers.get(p.id))
+      botThinkingTimers.delete(p.id)
+    }
+  }
+}
 
 function leaveCurrentRoom(socket, playerId) {
   for (const [code, room] of rooms) {
