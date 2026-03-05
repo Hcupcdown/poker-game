@@ -7,9 +7,6 @@
     </div>
 
     <!-- 我的手牌区域（含左侧余额） -->
-    <div class="hand-strength-row">
-      <div v-if="handStrength" class="hand-strength-label">{{ handStrength }}</div>
-    </div>
     <div class="my-cards-row">
       <div class="my-chips-left">
         <span class="chips-icon">💰</span>
@@ -71,9 +68,8 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useCardDisplay } from '../../composables/useCardDisplay'
-import { evaluateHandStrength } from '../../utils/handEval'
 
 const { getCardRank, getCardSuit, isRedCard } = useCardDisplay()
 
@@ -91,13 +87,7 @@ const props = defineProps({
   isDealer: { type: Boolean, default: false },
   isSmallBlind: { type: Boolean, default: false },
   isBigBlind: { type: Boolean, default: false },
-  connected: { type: Boolean, default: true },
-  communityCards: { type: Array, default: () => [] }
-})
-
-const handStrength = computed(() => {
-  if (!props.communityCards || props.communityCards.length < 3) return null
-  return evaluateHandStrength(props.cards, props.communityCards)
+  connected: { type: Boolean, default: true }
 })
 
 defineEmits(['toggleReveal'])
@@ -343,22 +333,6 @@ defineExpose({ myAreaRef, cardsContainer })
   color: #95a5a6;
   margin-left: 4px;
   font-weight: 400;
-}
-
-.hand-strength-label {
-  display: inline-block;
-  text-align: center;
-  font-size: 14px;
-  font-weight: 800;
-  color: #f5c842;
-  text-shadow: 0 1px 8px rgba(245,200,66,0.6);
-  letter-spacing: 1px;
-  animation: fadeInDown 0.3s ease;
-  white-space: nowrap;
-  background: rgba(245,200,66,0.1);
-  padding: 2px 12px;
-  border-radius: 20px;
-  border: 1px solid rgba(245,200,66,0.3);
 }
 
 @keyframes fadeInDown {
