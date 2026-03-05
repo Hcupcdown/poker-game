@@ -189,7 +189,7 @@ defineExpose({ openPicker })
 }
 
 .action-panel-inner {
-  padding: 10px 14px 16px;
+  padding: clamp(6px, 1.2dvh, 10px) 14px clamp(10px, 2dvh, 16px);
   max-width: 480px;
   margin: 0 auto;
 }
@@ -201,7 +201,7 @@ defineExpose({ openPicker })
 }
 
 .action-btn {
-  height: 60px !important;
+  height: clamp(46px, 8dvh, 60px) !important;
   border-radius: 14px !important;
   width: 100% !important;
   transition: opacity 0.3s, filter 0.3s;

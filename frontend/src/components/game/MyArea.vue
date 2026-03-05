@@ -113,17 +113,17 @@ defineExpose({ myAreaRef, cardsContainer })
 <style scoped>
 .my-area {
   background: rgba(0,0,0,0.35);
-  padding: 10px 14px 8px;
+  padding: clamp(6px, 1.2dvh, 10px) 14px clamp(5px, 1dvh, 8px);
   flex-shrink: 0;
 }
 
 /* 手牌强度标签独立一行，居中显示在手牌上方 */
 .hand-strength-row {
-  min-height: 22px;
+  min-height: clamp(16px, 2.5dvh, 22px);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 4px;
+  margin-bottom: clamp(2px, 0.5dvh, 4px);
 }
 
 .my-cards-row {
@@ -131,7 +131,7 @@ defineExpose({ myAreaRef, cardsContainer })
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 10px;
+  margin-bottom: clamp(6px, 1.2dvh, 10px);
 }
 
 .my-chips-left {
@@ -145,10 +145,10 @@ defineExpose({ myAreaRef, cardsContainer })
   z-index: 1;
 }
 
-.my-chips-left .chips-icon { font-size: 18px; line-height: 1; }
+.my-chips-left .chips-icon { font-size: clamp(14px, 2.2dvh, 18px); line-height: 1; }
 .my-chips-left .chips-val {
   color: #ffd700;
-  font-size: 13px;
+  font-size: clamp(11px, 1.8dvh, 13px);
   font-weight: 700;
   margin-top: 2px;
   text-shadow: 0 1px 4px rgba(0,0,0,0.5);
@@ -156,20 +156,20 @@ defineExpose({ myAreaRef, cardsContainer })
 
 .my-cards {
   display: flex;
-  gap: 14px;
+  gap: clamp(8px, 1.8dvh, 14px);
   justify-content: center;
 }
 
 .my-card-placeholder {
-  width: 60px;
-  height: 84px;
+  width: clamp(46px, 8dvh, 60px);
+  height: clamp(64px, 11.2dvh, 84px);
   flex-shrink: 0;
 }
 
 .my-card-flip-wrap {
   position: relative;
-  width: 60px;
-  height: 84px;
+  width: clamp(46px, 8dvh, 60px);
+  height: clamp(64px, 11.2dvh, 84px);
   perspective: 600px;
   -webkit-perspective: 600px;
   cursor: pointer;
@@ -245,14 +245,14 @@ defineExpose({ myAreaRef, cardsContainer })
 }
 
 .my-card-rank {
-  font-size: 24px;
+  font-size: clamp(16px, 3.5dvh, 24px);
   font-weight: 800;
   color: #2c3e50;
   line-height: 1;
 }
 
 .my-card-suit {
-  font-size: 22px;
+  font-size: clamp(15px, 3.2dvh, 22px);
   color: #2c3e50;
   line-height: 1;
 }
@@ -269,7 +269,7 @@ defineExpose({ myAreaRef, cardsContainer })
   left: 5px;
   display: flex;
   flex-direction: column;
-  font-size: 11px;
+  font-size: clamp(9px, 1.5dvh, 11px);
   font-weight: 700;
   line-height: 1.1;
   color: inherit;
@@ -286,8 +286,8 @@ defineExpose({ myAreaRef, cardsContainer })
 }
 
 .chip-icon-lg {
-  width: 32px;
-  height: 32px;
+  width: clamp(22px, 4dvh, 32px);
+  height: clamp(22px, 4dvh, 32px);
 }
 
 .my-bet-above {
@@ -295,12 +295,12 @@ defineExpose({ myAreaRef, cardsContainer })
   align-items: center;
   justify-content: center;
   gap: 5px;
-  margin-bottom: 14px;
+  margin-bottom: clamp(6px, 1.5dvh, 14px);
   animation: betAboveFadeIn 0.3s ease both;
 }
 
 .my-bet-above-val {
-  font-size: 18px;
+  font-size: clamp(14px, 2.5dvh, 18px);
   font-weight: 800;
   color: #f5c842;
   text-shadow: 0 1px 6px rgba(245, 200, 66, 0.5);
@@ -315,7 +315,7 @@ defineExpose({ myAreaRef, cardsContainer })
 .my-info-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: clamp(6px, 1.2dvh, 12px);
 }
 
 .my-avatar-area {
@@ -331,12 +331,12 @@ defineExpose({ myAreaRef, cardsContainer })
   justify-content: center;
 }
 
-.my-avatar { font-size: 28px; }
+.my-avatar { font-size: clamp(20px, 3.5dvh, 28px); }
 
 .my-name {
   display: block;
   color: #fff;
-  font-size: 14px;
+  font-size: clamp(12px, 1.8dvh, 14px);
   font-weight: 700;
 }
 
@@ -354,12 +354,12 @@ defineExpose({ myAreaRef, cardsContainer })
 
 .hand-strength-label {
   text-align: center;
-  font-size: 15px;
+  font-size: clamp(12px, 2dvh, 15px);
   font-weight: 800;
   color: #f5c842;
   letter-spacing: 1.5px;
   text-shadow: 0 1px 8px rgba(245,200,66,0.5);
-  margin: 4px 0 6px;
+  margin: clamp(2px, 0.5dvh, 4px) 0 clamp(4px, 0.8dvh, 6px);
 }
 
 .hs-trans-enter-active { transition: opacity 0.25s ease, transform 0.25s ease; }
@@ -388,7 +388,7 @@ defineExpose({ myAreaRef, cardsContainer })
 .my-timer { margin-left: auto; }
 
 .timer-num {
-  font-size: 24px;
+  font-size: clamp(18px, 3.2dvh, 24px);
   font-weight: 800;
   color: #fff;
   transition: color 0.3s;
