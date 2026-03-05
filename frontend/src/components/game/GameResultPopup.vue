@@ -9,7 +9,24 @@
   >
     <div class="result-popup">
       <div class="result-title">🎉 本局结算</div>
-      <div class="result-winner" v-if="result?.winner">
+
+      <!-- 平局：多赢家 -->
+      <div v-if="result?.winners?.length > 1" class="result-winner-tie">
+        <div class="tie-label">🤝 平局 · 平分底池</div>
+        <div class="tie-winners">
+          <div v-for="wid in result.winners" :key="wid" class="tie-winner-item">
+            <span class="winner-avatar small">{{ getWinner(wid)?.avatar }}</span>
+            <div class="winner-info">
+              <span class="winner-name">{{ getWinner(wid)?.nickname }}</span>
+              <span class="winner-hand">{{ getWinnerHand(wid) }}</span>
+            </div>
+            <span class="winner-gain gold">+{{ getWinnerGain(wid) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 单赢家 -->
+      <div class="result-winner" v-else-if="result?.winner">
         <span class="winner-avatar">{{ result.winner.avatar }}</span>
         <div class="winner-info">
           <span class="winner-name">{{ result.winner.nickname }}</span>
@@ -63,7 +80,7 @@
       <div class="chips-change" v-if="result?.allHands">
         <div v-for="p in result.allHands" :key="'chips-'+p.id" class="chips-row">
           <span>{{ p.avatar }} {{ p.nickname }}</span>
-          <span :class="p.chipsChange >= 0 ? 'gold' : 'red-text'">
+          <span :class="p.isWinner ? 'gold' : (p.chipsChange >= 0 ? 'gold' : 'red-text')">
             {{ p.chipsChange >= 0 ? '+' : '' }}{{ p.chipsChange }} → {{ p.chipsAfter }}
           </span>
         </div>
@@ -173,6 +190,17 @@ function getSidePotWinnerNames(winnerIds) {
   }).join('、')
 }
 
+// 平局展示辅助
+function getWinner(id) {
+  return props.result?.allHands?.find(h => h.id === id)
+}
+function getWinnerHand(id) {
+  return props.result?.allHands?.find(h => h.id === id)?.handName || ''
+}
+function getWinnerGain(id) {
+  return props.result?.allHands?.find(h => h.id === id)?.gain || 0
+}
+
 // ===== #9 结算倒计时 =====
 const nextRoundCountdown = ref(60)
 let countdownTimer = null
@@ -213,6 +241,34 @@ onUnmounted(() => {
   margin-bottom: 20px;
 }
 
+/* 平局多赢家 */
+.result-winner-tie {
+  background: rgba(245,200,66,0.08);
+  border: 1px solid rgba(245,200,66,0.25);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.tie-label {
+  color: #f5c842;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.tie-winners { display: flex; flex-direction: column; gap: 8px; }
+
+.tie-winner-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.winner-avatar.small { font-size: 26px; }
+
+/* 单赢家 */
 .result-winner {
   display: flex;
   align-items: center;
