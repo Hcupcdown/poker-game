@@ -375,14 +375,7 @@ const { setupSocket, cleanupSocket } = useGameSocket({
 // ====== 操作 ======
 function doAction(type, amount) {
   stopTimer()
-  const actionMsg = {
-    fold: `${store.player?.nickname} 弃牌`,
-    check: `${store.player?.nickname} 看牌`,
-    call: `${store.player?.nickname} 跟注 ${callAmount.value}`,
-    raise: `${store.player?.nickname} 加注 ${amount}`,
-    allin: `${store.player?.nickname} All In ${myChips.value}`
-  }
-  store.addLog(actionMsg[type] || type)
+  // 不在本地写日志，等服务端广播 player:action:log，避免自己操作时写两条
   showToast({ message: ACTION_NAMES[type], duration: 800, position: 'middle' })
   getSocket().emit('player:action', { type, amount: amount || callAmount.value })
 }
