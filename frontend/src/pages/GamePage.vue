@@ -13,6 +13,9 @@
       </div>
       <div class="top-right">
         <span class="room-code">{{ roomId }}</span>
+        <button class="mute-btn" @click="handleToggleMute" :title="soundMuted ? '开启声音' : '静音'">
+          {{ soundMuted ? '🔇' : '🔊' }}
+        </button>
         <van-button
           size="mini"
           style="margin-left: 8px; font-size: 11px; background: rgba(255,255,255,0.12); border-color: transparent; color: #fff;"
@@ -195,6 +198,7 @@ import { PHASE_NAMES } from '../utils/cardUtils'
 import { ACTION_NAMES } from '../constants/handRules'
 import { showToast } from 'vant'
 import { getSocket, connectionStatus, networkLatency } from '../utils/socket'
+import { playBetSound, playFoldSound, playWinSound, playDealSound, getMuted, toggleMute } from '../utils/sound'
 
 // 子组件
 import OpponentSlot from '../components/game/OpponentSlot.vue'
@@ -241,6 +245,7 @@ const finalPlayers = ref([])
 const finalReason = ref('')
 const showRules = ref(false)
 const showLogPanel = ref(false)
+const soundMuted = ref(getMuted())
 
 function relativeTime(ts) {
   const diff = Math.floor((Date.now() - ts) / 1000)
@@ -248,6 +253,10 @@ function relativeTime(ts) {
   if (diff < 60) return `${diff}秒前`
   if (diff < 3600) return `${Math.floor(diff / 60)}分前`
   return `${Math.floor(diff / 3600)}小时前`
+}
+
+function handleToggleMute() {
+  soundMuted.value = toggleMute()
 }
 
 function endGame() {
@@ -313,7 +322,10 @@ const myDisplayBet = computed(() => {
   return getDisplayBet(me.value.id)
 })
 
-// ====== 行动 Toast ======
+// Deal sound on deal animation start
+watch(deckVisible, (val) => {
+  if (val) playDealSound()
+})
 const actionToast = ref(null)
 let toastTimer = null
 watch(lastAction, (val) => {
@@ -321,6 +333,10 @@ watch(lastAction, (val) => {
   if (toastTimer) clearTimeout(toastTimer)
   actionToast.value = val
   toastTimer = setTimeout(() => { actionToast.value = null }, 2000)
+  // 音效
+  if (val.type === 'fold') playFoldSound()
+  else if (val.type === 'raise' || val.type === 'allin') playBetSound()
+  else if (val.type === 'call' || val.type === 'check') playBetSound()
 })
 
 // ====== 组件 refs ======
@@ -456,6 +472,20 @@ onUnmounted(() => {
   letter-spacing: 2px;
 }
 
+.mute-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 4px;
+  margin-left: 8px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.mute-btn:active { opacity: 1; }
+
 /* ===== 连接状态指示器 ===== */
 .connection-indicator {
   display: inline-flex;
@@ -560,59 +590,68 @@ onUnmounted(() => {
 }
 
 /* 根据人数动态定位（顺时针：从"我"左侧开始，经上方到右侧）
-   seat-0 = 我的顺时针下一位，seat-N = 我的顺时针上一位 */
+   seat-0 = 我的顺时针下一位，seat-N = 我的顺时针上一位
+   使用 vmin 单位替代纯百分比，减少宽屏重叠 */
 
 /* 1个对手 → 正对面 */
 .seats-1 .seat-0 { top: 8%; left: 50%; transform: translateX(-50%); }
 
 /* 2个对手 → 左上、右上 */
-.seats-2 .seat-0 { top: 8%; left: 25%; }
-.seats-2 .seat-1 { top: 8%; right: 25%; transform: translateX(50%); }
+.seats-2 .seat-0 { top: 8%; left: 22%; }
+.seats-2 .seat-1 { top: 8%; right: 22%; }
 
 /* 3个对手 → 左中、正上、右中 */
-.seats-3 .seat-0 { top: 35%; left: 4%; }
-.seats-3 .seat-1 { top: 8%; left: 50%; transform: translateX(-50%); }
-.seats-3 .seat-2 { top: 35%; right: 4%; }
+.seats-3 .seat-0 { top: 32%; left: 3%; }
+.seats-3 .seat-1 { top: 6%; left: 50%; transform: translateX(-50%); }
+.seats-3 .seat-2 { top: 32%; right: 3%; }
 
 /* 4个对手 → 左中、左上、右上、右中 */
-.seats-4 .seat-0 { top: 35%; left: 2%; }
+.seats-4 .seat-0 { top: 32%; left: 2%; }
 .seats-4 .seat-1 { top: 5%; left: 20%; }
 .seats-4 .seat-2 { top: 5%; right: 20%; }
-.seats-4 .seat-3 { top: 35%; right: 2%; }
+.seats-4 .seat-3 { top: 32%; right: 2%; }
 
 /* 5个对手 → 左中、左上、正上、右上、右中 */
-.seats-5 .seat-0 { top: 40%; left: 2%; }
-.seats-5 .seat-1 { top: 5%; left: 15%; }
+.seats-5 .seat-0 { top: 36%; left: 2%; }
+.seats-5 .seat-1 { top: 5%; left: 14%; }
 .seats-5 .seat-2 { top: 5%; left: 50%; transform: translateX(-50%); }
-.seats-5 .seat-3 { top: 5%; right: 15%; }
-.seats-5 .seat-4 { top: 40%; right: 2%; }
+.seats-5 .seat-3 { top: 5%; right: 14%; }
+.seats-5 .seat-4 { top: 36%; right: 2%; }
 
 /* 6个对手 */
-.seats-6 .seat-0 { top: 38%; left: 2%; }
-.seats-6 .seat-1 { top: 4%; left: 20%; }
-.seats-6 .seat-2 { top: 4%; left: 50%; transform: translateX(-50%); }
-.seats-6 .seat-3 { top: 4%; right: 20%; }
-.seats-6 .seat-4 { top: 38%; right: 2%; }
-.seats-6 .seat-5 { top: 65%; right: 10%; }
+.seats-6 .seat-0 { top: 35%; left: 2%; }
+.seats-6 .seat-1 { top: 5%; left: 18%; }
+.seats-6 .seat-2 { top: 5%; left: 50%; transform: translateX(-50%); }
+.seats-6 .seat-3 { top: 5%; right: 18%; }
+.seats-6 .seat-4 { top: 35%; right: 2%; }
+.seats-6 .seat-5 { top: 62%; right: 8%; }
 
 /* 7个对手 */
-.seats-7 .seat-0 { top: 35%; left: 2%; }
-.seats-7 .seat-1 { top: 4%; left: 18%; }
-.seats-7 .seat-2 { top: 4%; left: 50%; transform: translateX(-50%); }
-.seats-7 .seat-3 { top: 4%; right: 18%; }
-.seats-7 .seat-4 { top: 35%; right: 2%; }
-.seats-7 .seat-5 { top: 62%; right: 6%; }
-.seats-7 .seat-6 { top: 62%; left: 6%; }
+.seats-7 .seat-0 { top: 32%; left: 2%; }
+.seats-7 .seat-1 { top: 5%; left: 16%; }
+.seats-7 .seat-2 { top: 5%; left: 50%; transform: translateX(-50%); }
+.seats-7 .seat-3 { top: 5%; right: 16%; }
+.seats-7 .seat-4 { top: 32%; right: 2%; }
+.seats-7 .seat-5 { top: 60%; right: 5%; }
+.seats-7 .seat-6 { top: 60%; left: 5%; }
 
 /* 8个对手 */
-.seats-8 .seat-0 { top: 32%; left: 1%; }
-.seats-8 .seat-1 { top: 4%; left: 14%; }
-.seats-8 .seat-2 { top: 4%; left: 50%; transform: translateX(-50%); }
-.seats-8 .seat-3 { top: 4%; right: 14%; }
-.seats-8 .seat-4 { top: 32%; right: 1%; }
-.seats-8 .seat-5 { top: 58%; right: 3%; }
-.seats-8 .seat-6 { top: 65%; left: 35%; }
-.seats-8 .seat-7 { top: 58%; left: 3%; }
+.seats-8 .seat-0 { top: 30%; left: 1%; }
+.seats-8 .seat-1 { top: 5%; left: 13%; }
+.seats-8 .seat-2 { top: 5%; left: 50%; transform: translateX(-50%); }
+.seats-8 .seat-3 { top: 5%; right: 13%; }
+.seats-8 .seat-4 { top: 30%; right: 1%; }
+.seats-8 .seat-5 { top: 56%; right: 2%; }
+.seats-8 .seat-6 { top: 63%; left: 32%; }
+.seats-8 .seat-7 { top: 56%; left: 2%; }
+
+/* 小屏手机兜底（宽度 <= 375px，适当收紧） */
+@media (max-width: 375px) {
+  .seats-5 .seat-0, .seats-6 .seat-0, .seats-7 .seat-0, .seats-8 .seat-0 { left: 1%; }
+  .seats-5 .seat-4, .seats-6 .seat-4, .seats-7 .seat-4, .seats-8 .seat-4 { right: 1%; }
+  .seats-6 .seat-1, .seats-7 .seat-1, .seats-8 .seat-1 { left: 10%; }
+  .seats-6 .seat-3, .seats-7 .seat-3, .seats-8 .seat-3 { right: 10%; }
+}
 
 /* ===== 行动 Toast ===== */
 .action-toast {

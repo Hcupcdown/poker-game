@@ -48,6 +48,22 @@ const app = createApp(App)
 app.use(pinia)
 app.use(router)
 app.use(Vant)
+
+// ===== #20 全局错误捕获 =====
+app.config.errorHandler = (err, instance, info) => {
+  console.error('[Vue errorHandler]', err, info)
+  try {
+    showToast({ message: '页面出错，请刷新重试', duration: 2500 })
+  } catch (e) { /* ignore */ }
+}
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[unhandledrejection]', event.reason)
+  try {
+    showToast({ message: '操作失败，请重试', duration: 2000 })
+  } catch (e) { /* ignore */ }
+})
+
 app.mount('#app')
 
 // ===== 全局监听 room:disbanded，自动回大厅 =====
