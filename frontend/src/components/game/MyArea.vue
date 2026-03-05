@@ -9,6 +9,8 @@
     <!-- 我的手牌区域（含左侧余额） -->
     <div class="my-cards-row">
       <div class="my-chips-left">
+        <!-- 手牌强度标签：显示在余额上方 -->
+        <div v-if="handStrength" class="hand-strength-label">{{ handStrength }}</div>
         <span class="chips-icon">💰</span>
         <span class="chips-val">{{ chips.toLocaleString() }}</span>
       </div>
@@ -45,8 +47,6 @@
           <div v-for="n in 2" :key="'ph'+n" class="my-card-placeholder"></div>
         </template>
       </div>
-      <!-- 手牌强度标签 -->
-      <div v-if="handStrength" class="hand-strength-label">{{ handStrength }}</div>
     </div>
 
     <!-- 我的信息栏 -->
@@ -340,15 +340,16 @@ defineExpose({ myAreaRef, cardsContainer })
 }
 
 .hand-strength-label {
+  display: block;
   text-align: center;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: #f5c842;
-  margin-top: -4px;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
   text-shadow: 0 1px 6px rgba(245,200,66,0.5);
   letter-spacing: 0.5px;
   animation: fadeInDown 0.3s ease;
+  white-space: nowrap;
 }
 
 @keyframes fadeInDown {

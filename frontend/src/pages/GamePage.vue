@@ -120,11 +120,9 @@
       />
       <div class="action-log">
         <div class="action-log-header">
-          <transition-group name="fade">
-            <div v-for="log in store.actionLog.slice(0, 3)" :key="log.time" class="log-item">
-              {{ log.msg }}
-            </div>
-          </transition-group>
+          <div v-for="log in store.actionLog.slice(0, 3)" :key="log.time" class="log-item">
+            {{ log.msg }}
+          </div>
         </div>
         <button class="log-expand-btn" @click="showLogPanel = true" title="展开日志">📋</button>
       </div>

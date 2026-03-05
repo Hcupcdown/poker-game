@@ -162,8 +162,9 @@ app.post('/api/register', async (req, res) => {
   const { username, password, nickname, avatar } = req.body || {}
 
   // 参数校验
-  if (!username || !/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
-    return res.status(400).json({ error: '用户名需为 3-20 位字母、数字或下划线' })
+  // 支持中文、字母、数字、下划线，2-20字符
+  if (!username || !/^[\u4e00-\u9fa5a-zA-Z0-9_]{2,20}$/.test(username)) {
+    return res.status(400).json({ error: '用户名需为 2-20 位（支持中文、字母、数字、下划线）' })
   }
   if (!password || password.length < 6 || password.length > 30) {
     return res.status(400).json({ error: '密码需为 6-30 位' })
