@@ -157,6 +157,7 @@ const timerGlowColor = computed(() => {
   gap: 2px;
   pointer-events: auto;
   transition: all 0.3s;
+  position: relative;
 }
 
 .opp-avatar-wrap {

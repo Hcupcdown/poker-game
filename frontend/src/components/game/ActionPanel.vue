@@ -131,18 +131,14 @@ const quickBetButtons = computed(() => {
 
 function applyQuickBet(amount) {
   if (amount < props.minRaise || amount > props.maxRaise) return
-  // 将筹码分配到各面值
+  // 按面值从大到小贪心分配，余数直接截断（最小面值10，不凑整以免超出）
   let remaining = amount
   const newCounts = { 10: 0, 20: 0, 50: 0, 100: 0 }
   for (const val of [100, 50, 20, 10]) {
-    const count = Math.floor(remaining / val)
-    newCounts[val] = count
-    remaining -= count * val
+    newCounts[val] = Math.floor(remaining / val)
+    remaining = remaining % val
   }
-  // 如有余数，向上取整到最小面值
-  if (remaining > 0 && amount <= props.maxRaise) {
-    newCounts[10] += Math.ceil(remaining / 10)
-  }
+  // remaining < 10 的余数丢弃（保证不超出 amount）
   chipCounts.value = newCounts
   pickerKey.value++
 }

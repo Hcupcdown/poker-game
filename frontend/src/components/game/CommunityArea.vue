@@ -86,8 +86,6 @@ defineExpose({ deckEl })
   position: relative;
 }
 
-
-
 .deck-pot-wrapper {
   position: relative;
   display: flex;
