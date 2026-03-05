@@ -8,9 +8,48 @@ const http = require('http')
 const { Server } = require('socket.io')
 const cors = require('cors')
 const { v4: uuidv4 } = require('uuid')
+const path = require('path')
+const fs = require('fs')
+const bcrypt = require('bcryptjs')
+const jwt = require('jsonwebtoken')
 const GameRoom = require('./src/GameRoom')
 const BotPlayer = require('./src/BotPlayer')
+const UserStore = require('./src/UserStore')
 const { generateRoomCode } = require('./src/utils')
+
+// ====== UserStore 初始化 ======
+const userStore = new UserStore(path.join(__dirname, 'data/users.json'))
+
+// ====== JWT 配置 ======
+const JWT_SECRET = process.env.JWT_SECRET || 'poker-game-secret-2024'
+const JWT_EXPIRES = '7d'
+
+function signToken(userId, username) {
+  return jwt.sign({ userId, username }, JWT_SECRET, { expiresIn: JWT_EXPIRES })
+}
+
+function verifyToken(token) {
+  try {
+    return jwt.verify(token, JWT_SECRET)
+  } catch (e) {
+    return null
+  }
+}
+
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: '未授权，请先登录' })
+  }
+  const token = authHeader.slice(7)
+  const decoded = verifyToken(token)
+  if (!decoded) {
+    return res.status(401).json({ error: 'token 无效或已过期' })
+  }
+  req.userId = decoded.userId
+  req.username = decoded.username
+  next()
+}
 
 const app = express()
 const server = http.createServer(app)
@@ -30,8 +69,6 @@ app.use(cors())
 app.use(express.json())
 
 // ====== 静态文件（生产环境托管前端 dist）======
-const path = require('path')
-const fs = require('fs')
 const distPath = path.join(__dirname, '../frontend/dist')
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath))
@@ -120,22 +157,87 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, rooms: rooms.size, players: players.size })
 })
 
-app.post('/api/login', (req, res) => {
-  const { nickname, avatar, chips } = req.body
-  if (!nickname || !nickname.trim()) {
-    return res.status(400).json({ error: '昵称不能为空' })
+// POST /api/register — 注册新用户
+app.post('/api/register', async (req, res) => {
+  const { username, password, nickname, avatar } = req.body || {}
+
+  // 参数校验
+  if (!username || !/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+    return res.status(400).json({ error: '用户名需为 3-20 位字母、数字或下划线' })
   }
-  const playerId = 'p_' + uuidv4().replace(/-/g, '').slice(0, 8)
-  const player = {
-    id: playerId,
-    nickname: nickname.trim(),
-    avatar: avatar || '🐼',
-    chips: chips || 1000,
-    createdAt: Date.now(),
-    lastActiveAt: Date.now()
+  if (!password || password.length < 6 || password.length > 30) {
+    return res.status(400).json({ error: '密码需为 6-30 位' })
   }
-  players.set(playerId, player)
-  res.json({ player, token: playerId })
+  if (!nickname || !nickname.trim() || nickname.trim().length > 10) {
+    return res.status(400).json({ error: '昵称需为 1-10 位非空字符' })
+  }
+
+  // 检查用户名是否已存在
+  if (userStore.findByUsername(username)) {
+    return res.status(400).json({ error: '用户名已被注册' })
+  }
+
+  try {
+    const passwordHash = await bcrypt.hash(password, 10)
+    const user = userStore.create({
+      username,
+      passwordHash,
+      nickname: nickname.trim(),
+      avatar: avatar || '🐼'
+    })
+    userStore.updateLastLogin(user.id)
+    const token = signToken(user.id, user.username)
+    console.log(`[Auth] 新用户注册: ${username}(${user.id})`)
+    return res.status(201).json({
+      user: { id: user.id, username: user.username, nickname: user.nickname, avatar: user.avatar, chips: user.chips },
+      token
+    })
+  } catch (e) {
+    console.error('[Auth] 注册失败:', e.message)
+    return res.status(500).json({ error: '注册失败，请稍后重试' })
+  }
+})
+
+// POST /api/login — 登录
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body || {}
+
+  if (!username || !password) {
+    return res.status(400).json({ error: '用户名和密码不能为空' })
+  }
+
+  const user = userStore.findByUsername(username)
+  if (!user) {
+    return res.status(401).json({ error: '用户名或密码错误' })
+  }
+
+  try {
+    const match = await bcrypt.compare(password, user.passwordHash)
+    if (!match) {
+      return res.status(401).json({ error: '用户名或密码错误' })
+    }
+    userStore.updateLastLogin(user.id)
+    const token = signToken(user.id, user.username)
+    console.log(`[Auth] 用户登录: ${username}(${user.id})`)
+    return res.json({
+      user: { id: user.id, username: user.username, nickname: user.nickname, avatar: user.avatar, chips: user.chips },
+      token
+    })
+  } catch (e) {
+    console.error('[Auth] 登录失败:', e.message)
+    return res.status(500).json({ error: '登录失败，请稍后重试' })
+  }
+})
+
+// GET /api/me — 获取当前用户信息（需要 token）
+app.get('/api/me', authMiddleware, (req, res) => {
+  const user = userStore.findById(req.userId)
+  if (!user) {
+    return res.status(401).json({ error: '用户不存在，请重新登录' })
+  }
+  return res.json({
+    user: { id: user.id, username: user.username, nickname: user.nickname, avatar: user.avatar, chips: user.chips }
+  })
 })
 
 app.get('/api/rooms', (req, res) => {
@@ -188,32 +290,59 @@ io.on('connection', (socket) => {
   })
 
   // ----------------------------------------------------------------
-  // player:auth — 认证
+  // player:auth — 认证（JWT token）
   // ----------------------------------------------------------------
   socket.on('player:auth', (data) => {
-    const { playerId, player: clientPlayer } = data || {}
+    const { token } = data || {}
 
-    let playerData = players.get(playerId)
-    if (!playerData && clientPlayer) {
-      playerData = { ...clientPlayer }
-      players.set(playerId, playerData)
-    }
-
-    if (!playerData) {
-      socket.emit('error', { message: '玩家未找到，请重新登录' })
+    if (!token) {
+      socket.emit('error', { message: '请先登录' })
       return
     }
 
-    socketToPlayer.set(socket.id, playerId)
+    // 验证 JWT
+    const decoded = verifyToken(token)
+    if (!decoded) {
+      socket.emit('error', { message: 'token 无效或已过期，请重新登录' })
+      return
+    }
+
+    const userId = decoded.userId
+
+    // 从 UserStore 加载用户数据
+    const userRecord = userStore.findById(userId)
+    if (!userRecord) {
+      socket.emit('error', { message: '用户不存在，请重新登录' })
+      return
+    }
+
+    // 构建或更新运行时 playerData
+    let playerData = players.get(userId)
+    if (!playerData) {
+      playerData = {
+        id: userId,
+        username: userRecord.username,
+        nickname: userRecord.nickname,
+        avatar: userRecord.avatar,
+        chips: userRecord.chips || 1000,
+        createdAt: userRecord.createdAt
+      }
+    } else {
+      // 更新基本信息（以 UserStore 为准）
+      playerData.nickname = userRecord.nickname
+      playerData.avatar = userRecord.avatar
+    }
+
+    socketToPlayer.set(socket.id, userId)
     playerData.socketId = socket.id
     playerData.lastActiveAt = Date.now()
-    players.set(playerId, playerData)
+    players.set(userId, playerData)
 
     // 检查玩家是否在某个房间中（用于断线重连恢复）
     let currentRoom = null
     let currentRoomId = null
     for (const [code, room] of rooms) {
-      const p = room.players.find(pl => pl.id === playerId)
+      const p = room.players.find(pl => pl.id === userId)
       if (p) {
         currentRoomId = code
         currentRoom = room
@@ -237,16 +366,16 @@ io.on('connection', (socket) => {
       if ((currentRoom.status === 'playing' || currentRoom.status === 'round_end') && currentRoom.gameState) {
         // 清除断线缓冲计时器
         if (currentRoom.clearDisconnectTimer) {
-          currentRoom.clearDisconnectTimer(playerId)
+          currentRoom.clearDisconnectTimer(userId)
         }
         // 通知其他玩家该玩家已重连
-        socket.to(currentRoomId).emit('player:reconnected', { playerId, nickname: playerData.nickname })
+        socket.to(currentRoomId).emit('player:reconnected', { playerId: userId, nickname: playerData.nickname })
         // 延迟推送游戏状态，确保前端已就绪
         setTimeout(() => {
-          socket.emit('game:state', currentRoom.getGameStateForPlayer(playerId))
+          socket.emit('game:state', currentRoom.getGameStateForPlayer(userId))
         }, 200)
         // 如果该玩家是当前行动者，重新启动行动超时计时器
-        if (currentRoom.status === 'playing' && currentRoom.gameState.currentPlayerId === playerId) {
+        if (currentRoom.status === 'playing' && currentRoom.gameState.currentPlayerId === userId) {
           currentRoom._startActionTimer()
         }
         // round_end 状态下：推送上一局结算结果和确认进度，让重连玩家恢复到等待下一局界面
@@ -274,7 +403,7 @@ io.on('connection', (socket) => {
       socket.emit('room:update', { room: currentRoom.getRoomInfo() })
       io.to(currentRoomId).emit('room:update', { room: currentRoom.getRoomInfo() })
     } else {
-      console.log(`[Auth] ${playerData.nickname}(${playerId}) 认证成功, socket=${socket.id}`)
+      console.log(`[Auth] ${playerData.nickname}(${userId}) 认证成功, socket=${socket.id}`)
     }
 
     socket.emit('player:auth:ok', authResult)

@@ -37,11 +37,19 @@ export const useGameStore = defineStore('game', () => {
     return gameState.value.players?.filter(p => p.id !== player.value.id) || []
   })
 
-  function setPlayer(data) {
+  function setPlayer(data, jwtToken) {
     player.value = data
-    token.value = data.id
+    // 如果传入了独立的 JWT token，优先使用；否则兼容旧模式
+    if (jwtToken) {
+      token.value = jwtToken
+    } else if (data.token) {
+      token.value = data.token
+      delete data.token
+    } else {
+      token.value = data.id
+    }
     localStorage.setItem('poker_player', JSON.stringify(data))
-    localStorage.setItem('poker_token', data.id)
+    localStorage.setItem('poker_token', token.value)
   }
 
   function setRoom(data) {

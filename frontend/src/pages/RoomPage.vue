@@ -269,9 +269,7 @@ function removeBot(botId) {
 onMounted(() => {
   if (!store.player) return router.replace('/login')
 
-  const socket = connectSocket(store.player)
-
-  // 加入房间 —— 直接发 room:join，携带 player 数据
+  const socket = connectSocket(store.player ? { ...store.player, _token: store.token } : store.player)
   // 后端 room:join 支持在 auth 之前处理（会用 clientPlayer 自动注册）
   const doJoinRoom = () => {
     socket.emit('room:join', { roomId: roomId.value, player: store.player })
