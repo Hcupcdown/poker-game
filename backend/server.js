@@ -131,7 +131,8 @@ app.post('/api/login', (req, res) => {
     nickname: nickname.trim(),
     avatar: avatar || '🐼',
     chips: chips || 1000,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    lastActiveAt: Date.now()
   }
   players.set(playerId, player)
   res.json({ player, token: playerId })
@@ -167,6 +168,11 @@ io.on('connection', (socket) => {
   socket.on('heartbeat', (data, callback) => {
     socket.lastHeartbeat = Date.now()
     const playerId = socketToPlayer.get(socket.id)
+    // 更新玩家最后活跃时间
+    if (playerId) {
+      const p = players.get(playerId)
+      if (p) p.lastActiveAt = Date.now()
+    }
     // 返回心跳响应，附带服务器时间和连接状态
     const response = {
       serverTime: Date.now(),
@@ -200,6 +206,7 @@ io.on('connection', (socket) => {
 
     socketToPlayer.set(socket.id, playerId)
     playerData.socketId = socket.id
+    playerData.lastActiveAt = Date.now()
     players.set(playerId, playerData)
 
     // 检查玩家是否在某个房间中（用于断线重连恢复）
@@ -765,24 +772,58 @@ const ZOMBIE_TIMEOUT = 60000         // 60 秒无心跳视为僵尸连接
 setInterval(() => {
   const now = Date.now()
   for (const [socketId, socket] of io.sockets.sockets) {
-    // 检查是否超时且已认证的连接
     if (socket.lastHeartbeat && (now - socket.lastHeartbeat > ZOMBIE_TIMEOUT)) {
       const playerId = socketToPlayer.get(socketId)
       if (playerId) {
-        console.log(`[Heartbeat] 僵尸连接检测: ${playerId} (socket=${socketId})，最后心跳: ${Math.round((now - socket.lastHeartbeat) / 1000)}s 前`)
-        // 不主动断开，让 Socket.IO 内置 ping/pong 处理
-        // 但标记玩家为疑似离线状态
-        const room = findPlayerRoom(playerId)
-        if (room) {
-          const player = room.players.find(p => p.id === playerId)
-          if (player && player.connected) {
-            console.log(`[Heartbeat] 标记 ${player.nickname} 为可能断线状态`)
-          }
-        }
+        console.log(`[Heartbeat] 僵尸连接超时，主动断开: ${playerId} (socket=${socketId})，最后心跳: ${Math.round((now - socket.lastHeartbeat) / 1000)}s 前`)
+        socket.disconnect(true)
       }
     }
   }
 }, ZOMBIE_CHECK_INTERVAL)
+
+// ====== 内存清理（每小时运行一次） ======
+const MEMORY_CLEANUP_INTERVAL = 60 * 60 * 1000   // 1 小时
+const PLAYER_INACTIVE_TTL     = 2 * 60 * 60 * 1000  // 玩家 2 小时不活跃则清理
+const ROOM_INACTIVE_TTL       = 2 * 60 * 60 * 1000  // 空房间 2 小时不活跃则清理
+
+setInterval(() => {
+  const now = Date.now()
+  let cleanedPlayers = 0
+  let cleanedRooms = 0
+
+  // 清理长期不活跃的空房间
+  for (const [code, room] of rooms) {
+    if (room.players.length === 0) {
+      const lastActive = room.lastActiveAt || room.createdAt || 0
+      if (now - lastActive > ROOM_INACTIVE_TTL) {
+        rooms.delete(code)
+        cleanedRooms++
+      }
+    }
+  }
+
+  // 清理长期不活跃且不在任何房间的玩家
+  // 先统计所有在房间中的玩家 ID
+  const activePids = new Set()
+  for (const room of rooms.values()) {
+    for (const p of room.players) activePids.add(p.id)
+  }
+  // 再清理 players Map 里既不在线、也不在房间、且超过 TTL 的玩家
+  for (const [pid, player] of players) {
+    if (activePids.has(pid)) continue                       // 在房间里，跳过
+    if (socketToPlayer.has(pid)) continue                    // 仍有 socket，跳过
+    const lastActive = player.lastActiveAt || player.createdAt || 0
+    if (now - lastActive > PLAYER_INACTIVE_TTL) {
+      players.delete(pid)
+      cleanedPlayers++
+    }
+  }
+
+  if (cleanedPlayers > 0 || cleanedRooms > 0) {
+    console.log(`[Cleanup] 内存清理完成：清除 ${cleanedPlayers} 个闲置玩家，${cleanedRooms} 个空房间（当前: ${players.size} 玩家，${rooms.size} 房间）`)
+  }
+}, MEMORY_CLEANUP_INTERVAL)
 
 // ====== 工具函数 ======
 

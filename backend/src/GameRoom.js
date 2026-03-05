@@ -72,6 +72,10 @@ class GameRoom {
     // 断线缓冲计时器 { playerId: timeoutId }
     this.disconnectTimers = {}
 
+    // 时间戳：用于内存清理判断
+    this.createdAt = Date.now()
+    this.lastActiveAt = Date.now()
+
     // 回调钩子：阶段切换后通知外部（server.js 用于触发机器人行动）
     this.onPhaseAdvanced = null
     // 回调钩子：超时弃牌后通知外部
@@ -88,6 +92,7 @@ class GameRoom {
 
   addPlayer(playerData, socket) {
     if (this.isFull()) throw new Error('房间已满')
+    this.lastActiveAt = Date.now()
 
     const existing = this.players.find(p => p.id === playerData.id)
     if (existing) {
@@ -184,6 +189,7 @@ class GameRoom {
    */
   startGame({ startChips, isFirstRound } = {}) {
     if (this.players.length < 2) throw new Error('至少需要2名玩家')
+    this.lastActiveAt = Date.now()
 
     // 首局时重置筹码
     if (isFirstRound) {
@@ -315,6 +321,7 @@ class GameRoom {
     const gs = this.gameState
     if (!gs) throw new Error('游戏未开始')
     if (gs.currentPlayerId !== playerId) throw new Error('还没轮到你行动')
+    this.lastActiveAt = Date.now()
 
     const player = gs.players.find(p => p.id === playerId)
     if (!player || player.status !== 'active') throw new Error('玩家状态异常')
