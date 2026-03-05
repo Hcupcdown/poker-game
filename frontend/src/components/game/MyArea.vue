@@ -47,6 +47,11 @@
       </div>
     </div>
 
+    <!-- 手牌强度提示（手牌下方） -->
+    <transition name="hs-trans">
+      <div v-if="handStrength" class="hand-strength-label">{{ handStrength }}</div>
+    </transition>
+
     <!-- 我的信息栏 -->
     <div class="my-info-bar">
       <div class="my-avatar-area">
@@ -68,8 +73,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useCardDisplay } from '../../composables/useCardDisplay'
+import { evaluateHandStrength } from '../../utils/handEval'
 
 const { getCardRank, getCardSuit, isRedCard } = useCardDisplay()
 
@@ -87,7 +93,13 @@ const props = defineProps({
   isDealer: { type: Boolean, default: false },
   isSmallBlind: { type: Boolean, default: false },
   isBigBlind: { type: Boolean, default: false },
-  connected: { type: Boolean, default: true }
+  connected: { type: Boolean, default: true },
+  communityCards: { type: Array, default: () => [] }
+})
+
+const handStrength = computed(() => {
+  if (!props.communityCards || props.communityCards.length < 3) return null
+  return evaluateHandStrength(props.cards, props.communityCards)
 })
 
 defineEmits(['toggleReveal'])
@@ -339,6 +351,21 @@ defineExpose({ myAreaRef, cardsContainer })
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+.hand-strength-label {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 800;
+  color: #f5c842;
+  letter-spacing: 1.5px;
+  text-shadow: 0 1px 8px rgba(245,200,66,0.5);
+  margin: 4px 0 6px;
+}
+
+.hs-trans-enter-active { transition: opacity 0.25s ease, transform 0.25s ease; }
+.hs-trans-leave-active { transition: opacity 0.15s ease; }
+.hs-trans-enter-from { opacity: 0; transform: translateY(-4px); }
+.hs-trans-leave-to   { opacity: 0; }
 
 .role-badge {
   position: absolute;

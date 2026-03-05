@@ -115,6 +115,7 @@
         :is-small-blind="me?.isSmallBlind"
         :is-big-blind="me?.isBigBlind"
         :connected="me?.connected !== false"
+        :community-cards="communityCards"
         @toggle-reveal="toggleCardReveal"
       />
       <div class="action-log">
@@ -151,13 +152,6 @@
         </div>
       </van-popup>
     </div>
-
-    <!-- ===== 手牌强度提示（手牌与操作按钮之间） ===== -->
-    <transition name="hand-strength-trans">
-      <div v-if="handStrength && isInGame" class="hand-strength-bar">
-        {{ handStrength }}
-      </div>
-    </transition>
 
     <!-- ===== 操作面板 ===== -->
     <ActionPanel
@@ -200,7 +194,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useGameStore } from '../stores/gameStore'
 import { PHASE_NAMES } from '../utils/cardUtils'
 import { ACTION_NAMES } from '../constants/handRules'
-import { evaluateHandStrength } from '../utils/handEval'
 import { showToast } from 'vant'
 import { getSocket, connectionStatus, networkLatency } from '../utils/socket'
 import { playBetSound, playFoldSound, playWinSound, playDealSound, getMuted, toggleMute } from '../utils/sound'
@@ -296,10 +289,6 @@ const myCurrentBet = computed(() => me.value?.currentBet || 0)
 const isMyTurn = computed(() => gameState.value.currentPlayerId === store.player?.id && !!gameState.value.actionDeadline)
 const isInGame = computed(() => me.value?.status === 'active')
 const communityCards = computed(() => gameState.value.communityCards || [])
-const handStrength = computed(() => {
-  if (!communityCards.value || communityCards.value.length < 3) return null
-  return evaluateHandStrength(myCards.value, communityCards.value)
-})
 const lastAction = computed(() => gameState.value.lastAction)
 
 const callAmount = computed(() => {
@@ -875,21 +864,4 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   max-width: 100%;
 }
-
-/* ===== 手牌强度提示条（手牌与操作按钮之间） ===== */
-.hand-strength-bar {
-  text-align: center;
-  font-size: 15px;
-  font-weight: 800;
-  color: #f5c842;
-  letter-spacing: 1.5px;
-  text-shadow: 0 1px 8px rgba(245,200,66,0.5);
-  padding: 4px 0 2px;
-  flex-shrink: 0;
-}
-
-.hand-strength-trans-enter-active { transition: opacity 0.25s ease, transform 0.25s ease; }
-.hand-strength-trans-leave-active { transition: opacity 0.15s ease; }
-.hand-strength-trans-enter-from { opacity: 0; transform: translateY(4px); }
-.hand-strength-trans-leave-to   { opacity: 0; }
 </style>
