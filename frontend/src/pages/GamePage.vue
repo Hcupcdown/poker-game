@@ -324,10 +324,6 @@ const myDisplayBet = computed(() => {
   return getDisplayBet(me.value.id)
 })
 
-// Deal sound on deal animation start
-watch(deckVisible, (val) => {
-  if (val) playDealSound()
-})
 const actionToast = ref(null)
 let toastTimer = null
 watch(lastAction, (val) => {
@@ -356,6 +352,11 @@ const {
   cardsVisible, deckVisible, deckCardCount, communitySlots,
   toggleCardReveal, triggerDealAnimation
 } = useDealAnimation({ gameState, opponents, store, communityAreaRef, myAreaRef: myAreaComp })
+
+// Deal sound on deal animation start
+watch(deckVisible, (val) => {
+  if (val) playDealSound()
+})
 
 // 结算相关
 const showResult = ref(false)
