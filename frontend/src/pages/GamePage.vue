@@ -112,15 +112,44 @@
         :is-small-blind="me?.isSmallBlind"
         :is-big-blind="me?.isBigBlind"
         :connected="me?.connected !== false"
+        :community-cards="communityCards"
         @toggle-reveal="toggleCardReveal"
       />
       <div class="action-log">
-        <transition-group name="fade">
-          <div v-for="log in store.actionLog.slice(0, 3)" :key="log.time" class="log-item">
-            {{ log.msg }}
-          </div>
-        </transition-group>
+        <div class="action-log-header">
+          <transition-group name="fade">
+            <div v-for="log in store.actionLog.slice(0, 3)" :key="log.time" class="log-item">
+              {{ log.msg }}
+            </div>
+          </transition-group>
+        </div>
+        <button class="log-expand-btn" @click="showLogPanel = true" title="展开日志">📋</button>
       </div>
+
+      <!-- 完整操作历史面板 -->
+      <van-popup
+        v-model:show="showLogPanel"
+        position="right"
+        :style="{ width: '75%', height: '100%', background: '#0d1b2a' }"
+      >
+        <div class="log-panel">
+          <div class="log-panel-header">
+            <span class="log-panel-title">操作历史</span>
+            <van-icon name="cross" color="rgba(255,255,255,0.5)" size="18" @click="showLogPanel = false" />
+          </div>
+          <div class="log-panel-list">
+            <div
+              v-for="log in store.actionLog.slice(0, 50)"
+              :key="log.time"
+              class="log-panel-item"
+            >
+              <span class="log-panel-time">{{ relativeTime(log.time) }}</span>
+              <span class="log-panel-msg">{{ log.msg }}</span>
+            </div>
+            <div v-if="store.actionLog.length === 0" class="log-panel-empty">暂无操作记录</div>
+          </div>
+        </div>
+      </van-popup>
     </div>
 
     <!-- ===== 操作面板 ===== -->
@@ -211,6 +240,15 @@ const showFinalResult = ref(false)
 const finalPlayers = ref([])
 const finalReason = ref('')
 const showRules = ref(false)
+const showLogPanel = ref(false)
+
+function relativeTime(ts) {
+  const diff = Math.floor((Date.now() - ts) / 1000)
+  if (diff < 5) return '刚刚'
+  if (diff < 60) return `${diff}秒前`
+  if (diff < 3600) return `${Math.floor(diff / 60)}分前`
+  return `${Math.floor(diff / 3600)}小时前`
+}
 
 function endGame() {
   getSocket().emit('game:end')
@@ -692,6 +730,84 @@ onUnmounted(() => {
   pointer-events: none;
   z-index: 20;
   max-width: 45%;
+}
+
+.action-log-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.log-expand-btn {
+  pointer-events: auto;
+  background: rgba(0,0,0,0.6);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  padding: 3px 7px;
+  font-size: 14px;
+  cursor: pointer;
+  margin-top: 4px;
+  color: rgba(255,255,255,0.7);
+  line-height: 1.4;
+}
+
+.log-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.log-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.log-panel-title {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.log-panel-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.log-panel-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.log-panel-time {
+  color: rgba(255,255,255,0.35);
+  font-size: 10px;
+  flex-shrink: 0;
+  padding-top: 1px;
+  min-width: 42px;
+}
+
+.log-panel-msg {
+  color: rgba(255,255,255,0.8);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.log-panel-empty {
+  color: rgba(255,255,255,0.3);
+  text-align: center;
+  padding: 40px 0;
+  font-size: 14px;
 }
 
 .log-item {

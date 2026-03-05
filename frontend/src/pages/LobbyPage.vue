@@ -97,7 +97,10 @@
 
       <!-- 最近房间记录 -->
       <div v-if="recentRooms.length > 0" class="recent-rooms card-box">
-        <h3 class="action-title">⏱ 最近加入</h3>
+        <h3 class="action-title" style="display:flex;align-items:center;justify-content:space-between;">
+          ⏱ 最近加入
+          <van-button size="mini" class="btn-gray" :loading="refreshing" @click="refreshRooms" style="font-size:11px;">🔄 刷新</van-button>
+        </h3>
         <div
           v-for="r in recentRooms"
           :key="r.id"
@@ -129,8 +132,10 @@ const store = useGameStore()
 const joinCode = ref('')
 const creating = ref(false)
 const joining = ref(false)
+const refreshing = ref(false)
 const blindOptions = [5, 10, 25, 50]
 const recentRooms = ref([])
+let autoRefreshTimer = null
 
 const createForm = reactive({
   smallBlind: 10,
@@ -141,6 +146,16 @@ const createForm = reactive({
 onMounted(() => {
   const saved = localStorage.getItem('poker_recent_rooms')
   if (saved) recentRooms.value = JSON.parse(saved)
+
+  // ===== #19 房间设置持久化 =====
+  const savedSettings = localStorage.getItem('poker_room_settings')
+  if (savedSettings) {
+    try {
+      const s = JSON.parse(savedSettings)
+      if (s.smallBlind) { createForm.smallBlind = s.smallBlind; createForm.bigBlind = s.bigBlind || s.smallBlind * 2 }
+      if (s.maxPlayers) createForm.maxPlayers = s.maxPlayers
+    } catch (e) { /* ignore */ }
+  }
 
   // 确保 socket 已连接并认证
   const socket = connectSocket(store.player)
@@ -165,9 +180,13 @@ onMounted(() => {
     joining.value = false
     showToast({ message: message || '操作失败', icon: 'fail' })
   })
+
+  // 自动刷新（每 30 秒）
+  autoRefreshTimer = setInterval(refreshRooms, 30000)
 })
 
 onUnmounted(() => {
+  clearInterval(autoRefreshTimer)
   const socket = getSocket()
   socket.off('room:created')
   socket.off('error')
@@ -179,6 +198,12 @@ function handleCreate() {
     return router.replace('/login')
   }
   creating.value = true
+  // 保存房间设置
+  localStorage.setItem('poker_room_settings', JSON.stringify({
+    smallBlind: createForm.smallBlind,
+    bigBlind: createForm.bigBlind,
+    maxPlayers: createForm.maxPlayers
+  }))
   const socket = getSocket()
   socket.emit('room:create', {
     smallBlind: createForm.smallBlind,
@@ -235,6 +260,15 @@ function handleJoin() {
 
 function rejoinRoom(r) {
   router.push(`/room/${r.id}`)
+}
+
+function refreshRooms() {
+  const saved = localStorage.getItem('poker_recent_rooms')
+  if (saved) {
+    refreshing.value = true
+    recentRooms.value = JSON.parse(saved)
+    setTimeout(() => { refreshing.value = false }, 500)
+  }
 }
 
 function saveRecentRoom(id) {
